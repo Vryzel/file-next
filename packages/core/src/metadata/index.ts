@@ -27,3 +27,7 @@ export {
   createSqliteStore,
   type SqliteStoreOptions,
 } from "./sqlite-store";
+export {
+  createPostgresStore,
+  type PostgresStoreOptions,
+} from "./postgres-store";
