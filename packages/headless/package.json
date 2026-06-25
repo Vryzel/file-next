@@ -29,10 +29,8 @@
   },
   "peerDependencies": {
     "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
-  },
-  "dependencies": {
-    "file-next": "workspace:*"
+    "react-dom": ">=18.0.0",
+    "file-next": "^0.1.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
