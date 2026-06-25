@@ -45,8 +45,29 @@
  * walks the S3 bucket needs the adapter injected, which would
  * change the MetadataStore interface. Tracked for v0.3.
  */
-import Database from "better-sqlite3";
+import { createRequire } from "node:module";
 import type { Database as BetterSqliteDatabase } from "better-sqlite3";
+
+/**
+ * The native `better-sqlite3` binding is loaded lazily. A top-level
+ * `import Database from "better-sqlite3"` pulls the native module
+ * into every consumer's dependency graph, and bundlers like Next.js
+ * webpack/turbopack walk the native require chain at build time and
+ * fail with "Can't resolve 'fs'" — even when createSqliteStore is
+ * never called. Loading inside `buildInner` (the real factory body)
+ * keeps the native binding out of the consumer's bundle until
+ * createSqliteStore is actually invoked.
+ *
+ * We use `createRequire(import.meta.url)` to make webpack/turbopack
+ * emit a runtime `require()` call. Vitest resolves the require at
+ * runtime too (no static analysis).
+ */
+type BetterSqlite3Module = typeof import("better-sqlite3");
+type DatabaseCtor = new (path: string) => BetterSqliteDatabase;
+const extractDatabase = (mod: BetterSqlite3Module): DatabaseCtor => {
+  const m = mod as unknown as { default?: DatabaseCtor };
+  return (m.default ?? (mod as unknown as DatabaseCtor));
+};
 import {
   err,
   ok,
@@ -183,6 +204,60 @@ const runMigrations = (db: BetterSqliteDatabase): void => {
 // ---------------------------------------------------------------------------
 
 export const createSqliteStore = (
+  options: SqliteStoreOptions,
+): MetadataStore => {
+  // The consumer-facing factory is sync (matches the MetadataStore
+  // contract). The real work is built lazily — we return an object
+  // that delegates every method through `ensureReady()`, which
+  // resolves once and caches. First method call pays the import
+  // cost; the rest are direct.
+  let inner: MetadataStore | null = null;
+  let pending: Promise<MetadataStore> | null = null;
+
+  const ensureReady = async (): Promise<MetadataStore> => {
+    if (inner) return inner;
+    if (!pending) {
+      pending = (async () => {
+        // createRequire gives us a real require() call that
+        // webpack/turbopack leave alone (treated as a runtime call).
+        const req = createRequire(import.meta.url);
+      const mod = req("better-sqlite3") as BetterSqlite3Module;
+      inner = buildInner(extractDatabase(mod), options);
+        return inner;
+      })();
+    }
+    return pending;
+  };
+
+  const wrap = <A extends unknown[], R>(
+    method: (store: MetadataStore, ...args: A) => Promise<R>,
+  ): ((...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      const s = await ensureReady();
+      return method(s, ...args);
+    };
+
+  return {
+    createNode: wrap((s, i) => s.createNode(i)),
+    getNode: wrap((s, i) => s.getNode(i)),
+    listChildren: wrap((s, i) => s.listChildren(i)),
+    moveNode: wrap((s, i) => s.moveNode(i)),
+    deleteNode: wrap((s, i) => s.deleteNode(i)),
+    updateMetadata: wrap((s, i) => s.updateMetadata(i)),
+    search: wrap((s, i) => s.search(i)),
+    getPath: wrap((s, i) => s.getPath(i)),
+    reconcile: wrap((s) => s.reconcile()),
+  };
+};
+
+/**
+ * The real factory — receives the loaded Database constructor and
+ * options, builds the prepared statements and the 9-method store.
+ * Defined below as a closure that captures `Database` at call
+ * time (after the lazy import resolves).
+ */
+const buildInner = (
+  Database: DatabaseCtor,
   options: SqliteStoreOptions,
 ): MetadataStore => {
   const db = new Database(options.path);

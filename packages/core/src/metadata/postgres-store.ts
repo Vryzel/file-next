@@ -47,7 +47,24 @@
  * the S3 adapter injected into the store, which would change the
  * interface. Deferred to a follow-up.
  */
-import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { createRequire } from "node:module";
+import type { Pool, PoolClient, QueryResultRow } from "pg";
+
+/**
+ * Lazy-load `pg` (node-postgres). The native modules (pg's optional
+ * native bindings) and connection management shouldn't enter
+ * every consumer's bundle. Same pattern as `sqlite-store.ts`.
+ */
+type PgModule = typeof import("pg");
+type PgTypes = {
+  Pool: new (opts: { connectionString: string; max?: number }) => Pool;
+  PoolClient: new (...args: never[]) => PoolClient;
+  QueryResultRow: QueryResultRow;
+};
+const extractPg = (mod: PgModule): PgTypes => {
+  const m = mod as unknown as { default?: PgTypes };
+  return m.default ?? (mod as unknown as PgTypes);
+};
 import {
   err,
   ok,
@@ -213,7 +230,51 @@ const runMigrations = async (
 export const createPostgresStore = (
   options: PostgresStoreOptions,
 ): MetadataStore => {
-  const pool = new Pool({
+  // Public factory is sync; the real work builds lazily on first
+  // method call. See the matching comment in sqlite-store.ts.
+  let inner: MetadataStore | null = null;
+  let pending: Promise<MetadataStore> | null = null;
+
+  const ensureReady = async (): Promise<MetadataStore> => {
+    if (inner) return inner;
+    if (!pending) {
+      pending = (async () => {
+        const req = createRequire(import.meta.url);
+        const mod = req("pg") as PgModule;
+        inner = buildInner(extractPg(mod), options);
+        return inner;
+      })();
+    }
+    return pending;
+  };
+
+  const wrap = <A extends unknown[], R>(
+    method: (store: MetadataStore, ...args: A) => Promise<R>,
+  ): ((...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      const s = await ensureReady();
+      return method(s, ...args);
+    };
+
+  return {
+    createNode: wrap((s, i) => s.createNode(i)),
+    getNode: wrap((s, i) => s.getNode(i)),
+    listChildren: wrap((s, i) => s.listChildren(i)),
+    moveNode: wrap((s, i) => s.moveNode(i)),
+    deleteNode: wrap((s, i) => s.deleteNode(i)),
+    updateMetadata: wrap((s, i) => s.updateMetadata(i)),
+    search: wrap((s, i) => s.search(i)),
+    getPath: wrap((s, i) => s.getPath(i)),
+    reconcile: wrap((s) => s.reconcile()),
+  };
+};
+
+/**
+ * Real factory — builds the prepared-query store using the loaded
+ * pg module.
+ */
+const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore => {
+  const pool = new pg.Pool({
     connectionString: options.connectionString,
     max: options.maxPoolSize ?? 10,
   });
