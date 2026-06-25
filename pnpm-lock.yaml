@@ -60,6 +60,9 @@ importers:
       '@types/node':
         specifier: ^22.9.0
         version: 22.19.21
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.0
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.31
@@ -138,7 +141,7 @@ importers:
         version: 11.10.0
       drizzle-orm:
         specifier: ^0.36.0
-        version: 0.36.4(@types/better-sqlite3@7.6.13)(@types/react@18.3.31)(better-sqlite3@11.10.0)(pg@8.21.0)(react@18.3.1)
+        version: 0.36.4(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(@types/react@18.3.31)(better-sqlite3@11.10.0)(pg@8.21.0)(react@18.3.1)
       pg:
         specifier: ^8.13.0
         version: 8.21.0
@@ -1692,6 +1695,9 @@ packages:
 
   '@types/node@22.19.21':
     resolution: {integrity: sha512-VMeFBSCKQKmm2swI2kW51SFusDqekC6q9trBCvJ/JliDchFSuoYYKN7yVNjPthP1HKZcx3U1gI/wTcEBjEFKTA==}
+
+  '@types/pg@8.20.0':
+    resolution: {integrity: sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==}
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -5254,6 +5260,12 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/pg@8.20.0':
+    dependencies:
+      '@types/node': 22.19.21
+      pg-protocol: 1.14.0
+      pg-types: 2.2.0
+
   '@types/prop-types@15.7.15': {}
 
   '@types/react-dom@18.3.7(@types/react@18.3.31)':
@@ -5668,9 +5680,10 @@ snapshots:
 
   dom-accessibility-api@0.6.3: {}
 
-  drizzle-orm@0.36.4(@types/better-sqlite3@7.6.13)(@types/react@18.3.31)(better-sqlite3@11.10.0)(pg@8.21.0)(react@18.3.1):
+  drizzle-orm@0.36.4(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(@types/react@18.3.31)(better-sqlite3@11.10.0)(pg@8.21.0)(react@18.3.1):
     optionalDependencies:
       '@types/better-sqlite3': 7.6.13
+      '@types/pg': 8.20.0
       '@types/react': 18.3.31
       better-sqlite3: 11.10.0
       pg: 8.21.0
