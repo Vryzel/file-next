@@ -118,7 +118,7 @@ export { parseFileSystemConfig } from "./storage/config";
 export type { MetadataStore } from "./metadata/store";
 
 // PR 4a: metadata store
-export { createMemoryStore } from "./metadata";
+export { createMemoryStore, createSqliteStore, type SqliteStoreOptions } from "./metadata";
 export type {
   FileNode,
   NodeKind,
