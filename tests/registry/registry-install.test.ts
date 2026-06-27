@@ -32,7 +32,8 @@ const listItemJson = (): Array<{ jsonName: string; parsed: Record<string, unknow
       f.endsWith(".json") &&
       f !== "registry.json" &&
       f !== "schema-version.json" &&
-      f !== "tsconfig.json",
+      f !== "tsconfig.json" &&
+      f !== "package.json",
   );
   return files.map((jsonName) => ({
     jsonName,
@@ -134,12 +135,27 @@ describe("registry install smoke — shadcn add semantics", () => {
 
   it("non-hook items declare no registryDependencies (no headless needed)", () => {
     const items = listItemJson();
+    // Items in this list DO use the headless package (via the
+    // explorer hooks), so they're allowed to declare the dep.
+    // Everything else (breadcrumbs, file-preview, empty-state,
+    // error-state, file-icon, explorer-toolbar) is presentational
+    // and should NOT pull in the headless package.
+    const itemsUsingHeadless = [
+      "file-browser",
+      "file-uploader",
+      "file-actions",
+      "file-explorer",
+      "explorer-list-view",
+      "explorer-grid-view",
+      "explorer-context-menu",
+    ];
     const nonHookItems = items.filter(
-      (i) => !["file-browser", "file-uploader", "file-actions"].includes(i.parsed.name as string),
+      (i) => !itemsUsingHeadless.includes(i.parsed.name as string),
     );
     for (const item of nonHookItems) {
       const deps = (item.parsed.registryDependencies as string[]) ?? [];
-      // breadcrumbs, file-preview, empty-state, error-state don't need the headless package.
+      // breadcrumbs, file-preview, empty-state, error-state, file-icon,
+      // explorer-toolbar don't need the headless package.
       expect(
         deps.length === 0,
         `${item.parsed.name} unexpectedly declares registryDependencies`,

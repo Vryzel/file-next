@@ -1,0 +1,16 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "file-icon",
+  "type": "registry:component",
+  "title": "File Icon",
+  "description": "Mime-type-aware file/folder icon. Resolves a lucide icon from the file's mime type, with wildcard fallback for image/*, text/*, audio/*, video/*.",
+  "categories": ["files", "display"],
+  "dependencies": ["lucide-react"],
+  "files": [
+    {
+      "path": "registry/components/file-next/file-icon.tsx",
+      "type": "registry:component",
+      "target": "@components/file-next/file-icon.tsx"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "explorer-grid-view",
+  "type": "registry:block",
+  "title": "Explorer Grid View",
+  "description": "Card-grid layout for the file explorer. Each file is a square card with icon + name + size. Drag-drop and right-click enabled.",
+  "categories": ["files", "display"],
+  "dependencies": ["lucide-react"],
+  "files": [
+    {
+      "path": "registry/components/file-next/explorer-grid-view.tsx",
+      "type": "registry:component",
+      "target": "@components/file-next/explorer-grid-view.tsx"
+    }
+  ]
+}

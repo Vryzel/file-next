@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "explorer-context-menu",
+  "type": "registry:block",
+  "title": "Explorer Context Menu",
+  "description": "Right-click context menu for the file explorer: Open / Open in new tab / Rename / Move to / Copy to / Delete. Uses Radix ContextMenu under the hood.",
+  "categories": ["files", "menus"],
+  "dependencies": [
+    "lucide-react",
+    "@radix-ui/react-context-menu"
+  ],
+  "files": [
+    {
+      "path": "registry/components/file-next/explorer-context-menu.tsx",
+      "type": "registry:component",
+      "target": "@components/file-next/explorer-context-menu.tsx"
+    }
+  ]
+}

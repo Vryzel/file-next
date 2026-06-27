@@ -1,0 +1,17 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "file-explorer",
+  "type": "registry:block",
+  "title": "File Explorer",
+  "description": "Full file-browser orchestrator: list/grid views, context menu, drag-drop, breadcrumbs. Built on useFileExplorer from @file-next/headless.",
+  "categories": ["files", "dashboard"],
+  "registryDependencies": ["@file-next/headless"],
+  "dependencies": ["lucide-react"],
+  "files": [
+    {
+      "path": "registry/components/file-next/file-explorer.tsx",
+      "type": "registry:component",
+      "target": "@components/file-next/file-explorer.tsx"
+    }
+  ]
+}
