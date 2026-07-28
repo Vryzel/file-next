@@ -33,6 +33,7 @@
     "file-next": "^0.1.0"
   },
   "devDependencies": {
+    "file-next": "workspace:*",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@types/react": "^18.3.12",
