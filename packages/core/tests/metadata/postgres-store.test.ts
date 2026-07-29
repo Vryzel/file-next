@@ -530,6 +530,83 @@ describe("createPostgresStore — search", () => {
     if (r.ok) return;
     expect(r.error.code).toBe("NotFound");
   });
+
+  it("does not crash on LIKE wildcards + multi-word queries", async () => {
+    await ok(store.createNode(baseFileInput({ name: "alpha.txt" })));
+    await ok(store.createNode(baseFileInput({ name: "alpha beta.txt" })));
+    const queries = [
+      "alpha beta", // multi-word (ILIKE treats the whole string literally)
+      "100%", // LIKE wildcard — sanitized, becomes literal "%"
+      "under_score", // LIKE single-char wildcard — sanitized
+    ];
+    for (const q of queries) {
+      const r = await store.search({ tenantId: TENANT_A, query: q });
+      expect(r.ok, `query ${JSON.stringify(q)} should not crash`).toBe(true);
+    }
+    // Sanity: the multi-word query matches the literal substring.
+    const r = await store.search({ tenantId: TENANT_A, query: "alpha beta" });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.items.map((n) => n.name)).toEqual(["alpha beta.txt"]);
+    }
+  });
+
+  it("respects the limit argument", async () => {
+    for (let i = 0; i < 5; i++) {
+      await ok(store.createNode(baseFileInput({ name: `report-${i}.pdf` })));
+    }
+    const r = await store.search({ tenantId: TENANT_A, query: "report", limit: 2 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items).toHaveLength(2);
+  });
+
+  it("returns empty results for an empty query", async () => {
+    await ok(store.createNode(baseFileInput({ name: "alpha.txt" })));
+    const r = await store.search({ tenantId: TENANT_A, query: "" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items).toEqual([]);
+  });
+
+  it("excludes soft-deleted nodes from search results", async () => {
+    const a = await ok(store.createNode(baseFileInput({ name: "alpha.txt" })));
+    await ok(store.createNode(baseFileInput({ name: "alpha-draft.txt" })));
+    await store.deleteNode({ tenantId: TENANT_A, id: a.id });
+
+    const r = await store.search({ tenantId: TENANT_A, query: "alpha" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items.map((n) => n.name)).toEqual(["alpha-draft.txt"]);
+  });
+
+  it("tenant isolation: tenant B's matches are not visible to tenant A", async () => {
+    await ok(store.createNode(baseFileInput({ name: "shared.txt", tenantId: TENANT_A })));
+    await ok(store.createNode(baseFileInput({ name: "shared.txt", tenantId: TENANT_B })));
+
+    const a = await store.search({ tenantId: TENANT_A, query: "shared" });
+    expect(a.ok).toBe(true);
+    if (!a.ok) return;
+    expect(a.value.items).toHaveLength(1);
+    expect(a.value.items[0]?.tenantId).toBe(TENANT_A);
+  });
+
+  it("enables pg_trgm and creates the GIN trigram index on lower(name)", async () => {
+    // Migration sanity: pg_trgm must be installed (for gin_trgm_ops)
+    // and the GIN index must exist (so ILIKE '%x%' on lower(name)
+    // uses an index plan instead of a seq scan).
+    const extRes = await adminPool.query<{ extname: string }>(
+      "SELECT extname FROM pg_extension WHERE extname = 'pg_trgm'",
+    );
+    expect(extRes.rows[0]?.extname).toBe("pg_trgm");
+
+    const idxRes = await adminPool.query<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes
+       WHERE schemaname = $1 AND indexname = 'nodes_name_trgm_idx'`,
+      [SCHEMA],
+    );
+    expect(idxRes.rows[0]?.indexname).toBe("nodes_name_trgm_idx");
+  });
 });
 
 describe("createPostgresStore — getPath", () => {

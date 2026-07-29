@@ -35,7 +35,11 @@
  * Indexes for hot paths:
  *   nodes_path_prefix  → LIKE 'path/%' for moveNode cascade
  *   nodes_tenant_parent → listChildren
- *   nodes_name_lower   → ILIKE search
+ *   nodes_name_lower   → btree on lower(name); used for exact-match
+ *                        LIKE/ILIKE plans (no leading wildcard)
+ *   nodes_name_trgm_idx → GIN trigram on lower(name); used for
+ *                         ILIKE '%x%' plans (leading wildcard).
+ *                         Requires CREATE EXTENSION pg_trgm.
  *
  * Tenant isolation is enforced in app code (every query filters
  * by tenant_id). For a stricter setup, RLS policies + a per-query
@@ -72,6 +76,7 @@ import {
 } from "@/types/result";
 import { FileSystemError } from "@/errors";
 import { asS3Key, asTenantId, asUserId } from "@/types/branded";
+import { sanitizeLikePattern } from "./sanitize";
 import type {
   CreateNodeInput,
   DeleteNodeInput,
@@ -174,9 +179,17 @@ const rowToFileNode = (row: NodeRow): FileNode => ({
 // Migrations
 // ---------------------------------------------------------------------------
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const MIGRATION_SQL = (schema: string): string => `
+-- pg_trgm provides the gin_trgm_ops operator class so we can build
+-- a GIN trigram index on lower(name). Without the extension,
+-- CREATE INDEX … USING GIN (lower(name) gin_trgm_ops) fails.
+-- The extension is shared across the cluster (no schema), so it
+-- only needs to be installed once per database. IF NOT EXISTS
+-- makes the call a no-op on subsequent migrations.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE SCHEMA IF NOT EXISTS "${schema}";
 
 -- Tables are schema-qualified (they have to be, to live in
@@ -234,6 +247,13 @@ CREATE INDEX IF NOT EXISTS nodes_tenant_parent
   ON "${schema}".nodes (tenant_id, parent_id);
 CREATE INDEX IF NOT EXISTS nodes_name_lower
   ON "${schema}".nodes (lower(name));
+
+-- GIN trigram index lets ILIKE '%foo%' on lower(name) use an
+-- index plan instead of a seq scan. Cheap to maintain (~3x the
+-- row size), but search is O(matches) instead of O(rows) — a
+-- real win past a few thousand rows.
+CREATE INDEX IF NOT EXISTS nodes_name_trgm_idx
+  ON "${schema}".nodes USING GIN (lower(name) gin_trgm_ops);
 `;
 
 const runMigrations = async (
@@ -346,10 +366,11 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       }),
     );
 
-  // LIKE escape: `\` first, then `%` and `_` (must match the ESCAPE
-  // clause in the SQL).
-  const escapeLike = (s: string): string =>
-    s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+  // LIKE escape helper kept for any future ad-hoc LIKE; the
+  // sanitizer in `./sanitize` is the canonical version (it has
+  // unit tests and is shared with the SQLite adapter's intent
+  // for FTS5).
+  const escapeLike = sanitizeLikePattern;
 
   // Wrap a query in a transaction. Caller provides the work as an
   // async function; on success the tx commits, on throw it rolls back.

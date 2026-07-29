@@ -176,4 +176,40 @@ describe.each(stores)("MetadataStore search contract — %s", (_, createStore) =
     if (!r.ok) return;
     expect(r.value.items).toEqual([]);
   });
+
+  it("excludes soft-deleted nodes from search results", async () => {
+    const store = createStore();
+    const tenantId = asTenantId(`tenant-${randomUUID()}`);
+    const a = await store.createNode(makeFile(tenantId, { name: "alpha.txt" }));
+    if (!a.ok) throw new Error("setup");
+    await store.createNode(makeFile(tenantId, { name: "alpha-draft.txt" }));
+    await store.deleteNode({ tenantId, id: a.value.id });
+
+    const r = await store.search({ tenantId, query: "alpha" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items.map((n) => n.name)).toEqual(["alpha-draft.txt"]);
+  });
+
+  it("reflects renames in the search index after moveNode", async () => {
+    const store = createStore();
+    const tenantId = asTenantId(`tenant-${randomUUID()}`);
+    const a = await store.createNode(makeFile(tenantId, { name: "old-name.txt" }));
+    if (!a.ok) throw new Error("setup");
+    await store.moveNode({
+      tenantId,
+      id: a.value.id,
+      newParentId: null,
+      newName: "new-name.txt",
+    });
+
+    const oldR = await store.search({ tenantId, query: "old-name" });
+    expect(oldR.ok).toBe(true);
+    if (oldR.ok) expect(oldR.value.items).toEqual([]);
+
+    const newR = await store.search({ tenantId, query: "new-name" });
+    expect(newR.ok).toBe(true);
+    if (newR.ok)
+      expect(newR.value.items.map((n) => n.name)).toEqual(["new-name.txt"]);
+  });
 });
