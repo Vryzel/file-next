@@ -59,6 +59,7 @@ export interface FileExplorerActions {
   readonly deleteFile: (input: { id: string }) => Promise<unknown>;
   readonly moveFile: (input: { id: string; newParentId: string | null; newName?: string }) => Promise<unknown>;
   readonly copyFile: (input: { id: string; newParentId: string | null; newName?: string }) => Promise<unknown>;
+  readonly renameFile: (id: string, newName: string) => Promise<void>;
 }
 
 export interface FileExplorerProps {
@@ -89,6 +90,11 @@ export interface FileExplorerProps {
   readonly onOpenFolder?: (folder: FileNode) => void;
   /** Called when the user invokes "Open in new tab" on a file. */
   readonly onOpenInNewTab?: (file: FileNode) => Promise<void> | void;
+  /** Called when files are dropped onto a folder. */
+  readonly onMove?: (input: {
+    itemIds: ReadonlyArray<string>;
+    destinationFolderId: string;
+  }) => Promise<void> | void;
   /** Optional refetch trigger — incremented externally to force re-fetch. */
   readonly refreshKey?: number;
   /** Optional className for the outer wrapper. */
@@ -144,6 +150,7 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
     onActivate,
     onOpenFolder,
     onOpenInNewTab,
+    onMove = () => undefined,
     refreshKey,
     className,
   } = props;
@@ -154,6 +161,7 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
     parentId,
     initialView,
     autoFetch,
+    onMove,
     onActivate: (file) => {
       if (file.kind === "folder" && onOpenFolder) onOpenFolder(file);
       else if (onActivate) onActivate(file);
@@ -288,6 +296,7 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
           onContextMenu={handleContextMenu}
           onDragStart={explorer.beginDrag}
           onDragEnd={explorer.endDrag}
+          onDrop={explorer.commitDrop}
           draggingId={explorer.draggingId}
           dropTargetId={explorer.dropTargetId}
           onDragOverRow={explorer.setDropTarget}
@@ -305,6 +314,7 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
           onContextMenu={handleContextMenu}
           onDragStart={explorer.beginDrag}
           onDragEnd={explorer.endDrag}
+          onDrop={explorer.commitDrop}
           draggingId={explorer.draggingId}
           dropTargetId={explorer.dropTargetId}
           onDragOverRow={explorer.setDropTarget}

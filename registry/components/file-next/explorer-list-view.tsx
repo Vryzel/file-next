@@ -42,6 +42,7 @@ export interface ExplorerListViewProps {
   readonly onContextMenu?: (file: FileNode, event: React.MouseEvent) => void;
   readonly onDragStart: (id: string) => void;
   readonly onDragEnd: () => void;
+  readonly onDrop: (destinationFolderId: string) => void;
   readonly draggingId: string | null;
   readonly dropTargetId: string | null;
   readonly onDragOverRow: (id: string | null) => void;
@@ -107,6 +108,7 @@ export function ExplorerListView(props: ExplorerListViewProps): React.ReactEleme
     onContextMenu,
     onDragStart,
     onDragEnd,
+    onDrop,
     draggingId,
     dropTargetId,
     onDragOverRow,
@@ -218,16 +220,10 @@ export function ExplorerListView(props: ExplorerListViewProps): React.ReactEleme
                   e.preventDefault();
                   const draggedId = e.dataTransfer.getData(DRAG_MIME);
                   if (draggedId && draggedId !== file.id) {
-                    // The orchestrator handles the actual move.
-                    // The drag is ended here; the move callback is
-                    // dispatched via the parent's drop handler.
-                    onDragOverRow(file.id);
-                    // Trigger a synthetic drop: consumers wire
-                    // `onActivate` or a dedicated `onDrop` callback
-                    // for the move. For now, we rely on the
-                    // orchestrator to read dropTargetId and act.
+                    onDrop(file.id);
+                  } else {
+                    onDragEnd();
                   }
-                  onDragEnd();
                 }}
                 tabIndex={0}
                 className={cn(

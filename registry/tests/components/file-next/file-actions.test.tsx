@@ -21,12 +21,14 @@ import userEvent from "@testing-library/user-event";
 const mockDeleteFile = vi.fn();
 const mockMoveFile = vi.fn();
 const mockCopyFile = vi.fn();
+const mockRenameFile = vi.fn();
 
 vi.mock("@file-next/headless", () => ({
   useFileActions: () => ({
     deleteFile: mockDeleteFile,
     moveFile: mockMoveFile,
     copyFile: mockCopyFile,
+    renameFile: mockRenameFile,
     isPending: false,
     error: null,
   }),
@@ -75,6 +77,7 @@ const baseProps = {
     deleteFile: mockDeleteFile,
     moveFile: mockMoveFile,
     copyFile: mockCopyFile,
+    renameFile: mockRenameFile,
   },
 };
 
@@ -90,6 +93,7 @@ describe("<FileActions />", () => {
     mockDeleteFile.mockReset().mockResolvedValue({ ok: true, value: { id: "1" } });
     mockMoveFile.mockReset().mockResolvedValue({ ok: true, value: { id: "1" } });
     mockCopyFile.mockReset().mockResolvedValue({ ok: true, value: { id: "1" } });
+    mockRenameFile.mockReset().mockResolvedValue(undefined);
   });
 
   it("renders a trigger button with an aria-label naming the file", () => {
@@ -123,6 +127,21 @@ describe("<FileActions />", () => {
     expect(within(dialog).getByRole("heading", { name: /rename "alpha\.txt"/i })).toBeInTheDocument();
     // The default value is the file's current name.
     expect(within(dialog).getByDisplayValue("alpha.txt")).toBeInTheDocument();
+  });
+
+  it("confirming rename calls the hook's renameFile with the trimmed name", async () => {
+    render(<FileActions {...baseProps} />);
+    await user.click(screen.getByRole("button", { name: /actions for alpha\.txt/i }));
+    await user.click(screen.getByRole("menuitem", { name: /rename/i }));
+    const dialog = await waitFor(() => document.querySelector('[role="alertdialog"]') as HTMLElement);
+    fireEvent.change(within(dialog).getByDisplayValue("alpha.txt"), {
+      target: { value: " renamed.txt " },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^rename$/i }));
+
+    await waitFor(() => {
+      expect(mockRenameFile).toHaveBeenCalledWith("1", "renamed.txt");
+    });
   });
 
   it("opens the move prompt with a folder-id placeholder when Move is selected", async () => {

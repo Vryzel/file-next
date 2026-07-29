@@ -34,6 +34,7 @@ export interface ExplorerGridViewProps {
   readonly onContextMenu?: (file: FileNode, event: React.MouseEvent) => void;
   readonly onDragStart: (id: string) => void;
   readonly onDragEnd: () => void;
+  readonly onDrop: (destinationFolderId: string) => void;
   readonly draggingId: string | null;
   readonly dropTargetId: string | null;
   readonly onDragOverRow: (id: string | null) => void;
@@ -54,6 +55,7 @@ export function ExplorerGridView(
     onContextMenu,
     onDragStart,
     onDragEnd,
+    onDrop,
     draggingId,
     dropTargetId,
     onDragOverRow,
@@ -117,8 +119,7 @@ export function ExplorerGridView(
               onDrop={(e) => {
                 if (file.kind !== "folder") return;
                 e.preventDefault();
-                onDragOverRow(file.id);
-                onDragEnd();
+                onDrop(file.id);
               }}
               className={cn(
                 "group flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-md border border-border bg-card p-3 text-center outline-none transition-all",

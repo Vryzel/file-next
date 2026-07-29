@@ -42,13 +42,7 @@ export interface ExplorerContextMenuActions {
   readonly deleteFile: (input: { id: string }) => Promise<unknown>;
   readonly moveFile: (input: { id: string; newParentId: string | null }) => Promise<unknown>;
   readonly copyFile: (input: { id: string; newParentId: string | null }) => Promise<unknown>;
-  /**
-   * Optional: when provided, the "Rename" item prompts for a new
-   * name and calls this with `{ id, newName }`. The consumer's
-   * moveFile wrapper can implement rename-in-place by passing
-   * the current parentId.
-   */
-  readonly renameFile?: (input: { id: string; newName: string }) => Promise<unknown>;
+  readonly renameFile: (id: string, newName: string) => Promise<void>;
 }
 
 export interface ExplorerContextMenuProps {
@@ -206,9 +200,9 @@ export function ExplorerContextMenu(
           confirmLabel="Rename"
           onConfirm={(newName) => {
             setRenameOpen(false);
-            if (newName && newName !== file.name && actions.renameFile) {
+            if (newName && newName !== file.name) {
               void safeRun("Rename", () =>
-                actions.renameFile!({ id: file.id, newName }),
+                actions.renameFile(file.id, newName),
               );
             }
           }}

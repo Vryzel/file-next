@@ -66,7 +66,7 @@ export interface FileActionsProps {
 
 export function FileActions(props: FileActionsProps): React.ReactElement {
   const { file, files, setFiles, actions, className } = props;
-  const { deleteFile, moveFile, copyFile } = useFileActions({ files, setFiles, actions });
+  const { deleteFile, moveFile, copyFile, renameFile } = useFileActions({ files, setFiles, actions });
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -154,9 +154,8 @@ export function FileActions(props: FileActionsProps): React.ReactElement {
           confirmLabel="Rename"
           onConfirm={(newName) => {
             setRenameOpen(false);
-            // v0.1 only supports renaming via moveFile with new name.
-            // For now, do nothing; consumers can wire this up.
-            void newName;
+            const trimmedName = newName.trim();
+            if (trimmedName !== file.name) void renameFile(file.id, trimmedName);
           }}
         />
       )}

@@ -50,6 +50,10 @@ export interface UseFileExplorerOptions {
   readonly autoFetch?: boolean;
   /** Optional callback fired when the user picks a file/folder via click or keyboard. */
   readonly onActivate?: (file: FileNode) => void;
+  readonly onMove?: (input: {
+    itemIds: ReadonlyArray<string>;
+    destinationFolderId: string;
+  }) => Promise<void> | void;
 }
 
 export interface UseFileExplorerReturn {
@@ -76,6 +80,7 @@ export interface UseFileExplorerReturn {
   readonly dropTargetId: string | null;
   readonly beginDrag: (id: string) => void;
   readonly setDropTarget: (id: string | null) => void;
+  readonly commitDrop: (destinationFolderId: string) => void;
   readonly endDrag: () => void;
 }
 
@@ -138,6 +143,7 @@ export function useFileExplorer(
     initialView = "list",
     autoFetch = true,
     onActivate,
+    onMove,
   } = options;
 
   const [state, dispatch] = useReducer(reducer, initialView, initialState);
@@ -184,6 +190,21 @@ export function useFileExplorer(
     dispatch({ type: "SET_DROP_TARGET", id });
   }, []);
 
+  const commitDrop = useCallback((destinationFolderId: string) => {
+    const destination = files.find((file) => file.id === destinationFolderId);
+    if (
+      state.draggingId &&
+      destination?.kind === "folder" &&
+      state.draggingId !== destinationFolderId
+    ) {
+      void onMove?.({
+        itemIds: [state.draggingId],
+        destinationFolderId,
+      });
+    }
+    dispatch({ type: "END_DRAG" });
+  }, [files, onMove, state.draggingId]);
+
   const endDrag = useCallback(() => {
     dispatch({ type: "END_DRAG" });
   }, []);
@@ -204,6 +225,7 @@ export function useFileExplorer(
       dropTargetId: state.dropTargetId,
       beginDrag,
       setDropTarget,
+      commitDrop,
       endDrag,
     }),
     [
@@ -221,6 +243,7 @@ export function useFileExplorer(
       openContextMenu,
       beginDrag,
       setDropTarget,
+      commitDrop,
       endDrag,
     ],
   );
