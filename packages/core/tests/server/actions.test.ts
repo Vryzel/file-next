@@ -53,6 +53,10 @@ const makeMemoryFs = (): FileSystem => {
     createPresignedUploadUrl: async () => ok({ url: "x", method: "PUT" as const } as never),
     createPresignedDownloadUrl: async () => ok({ url: "x" } as never),
     getPublicUrl: async () => ok({ url: "x" } as never),
+    createMultipartUpload: async () => ok({ uploadId: "u", key: "k" as never } as never),
+    uploadPart: async () => ok({ etag: "e", partNumber: 1 } as never),
+    completeMultipartUpload: async () => ok({} as never),
+    abortMultipartUpload: async () => ok({} as never),
   };
   return {
     adapter,

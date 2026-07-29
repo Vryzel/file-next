@@ -229,6 +229,123 @@ describe("createMemoryAdapter — custom options", () => {
   });
 });
 
+describe("createMemoryAdapter — multipart (v0.2)", () => {
+  it("create + uploadPart + complete assembles the object in the given part order", async () => {
+    const created = await adapter.createMultipartUpload({
+      key: KEY,
+      contentType: "application/octet-stream",
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const uploadId = created.value.uploadId;
+
+    const p1 = await adapter.uploadPart({
+      key: KEY,
+      uploadId,
+      partNumber: 1,
+      body: new Uint8Array([1, 2]),
+    });
+    const p2 = await adapter.uploadPart({
+      key: KEY,
+      uploadId,
+      partNumber: 2,
+      body: new Uint8Array([3]),
+    });
+    expect(p1.ok && p1.value.partNumber).toBe(1);
+    expect(p2.ok && p2.value.etag).toBeTruthy();
+
+    const done = await adapter.completeMultipartUpload({
+      key: KEY,
+      uploadId,
+      parts: [
+        { partNumber: 1, etag: "e1" },
+        { partNumber: 2, etag: "e2" },
+      ],
+    });
+    expect(done.ok).toBe(true);
+
+    const read = await adapter.read({ key: KEY });
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(Array.from(read.value.body)).toEqual([1, 2, 3]);
+  });
+
+  it("complete honors the caller's part order (S3 semantics)", async () => {
+    const created = await adapter.createMultipartUpload({ key: KEY });
+    if (!created.ok) throw new Error("unreachable");
+    const uploadId = created.value.uploadId;
+    await adapter.uploadPart({ key: KEY, uploadId, partNumber: 1, body: new Uint8Array([1]) });
+    await adapter.uploadPart({ key: KEY, uploadId, partNumber: 2, body: new Uint8Array([2]) });
+
+    // Caller passes part 2 first — the assembled bytes follow that order.
+    const done = await adapter.completeMultipartUpload({
+      key: KEY,
+      uploadId,
+      parts: [
+        { partNumber: 2, etag: "e2" },
+        { partNumber: 1, etag: "e1" },
+      ],
+    });
+    expect(done.ok).toBe(true);
+    const read = await adapter.read({ key: KEY });
+    expect(read.ok && Array.from(read.value.body)).toEqual([2, 1]);
+  });
+
+  it("uploadPart / complete / abort with an unknown uploadId return NotFound", async () => {
+    const up = await adapter.uploadPart({
+      key: KEY,
+      uploadId: "nope",
+      partNumber: 1,
+      body: new Uint8Array([1]),
+    });
+    expect(!up.ok && up.error.code).toBe("NotFound");
+
+    const done = await adapter.completeMultipartUpload({
+      key: KEY,
+      uploadId: "nope",
+      parts: [],
+    });
+    expect(!done.ok && done.error.code).toBe("NotFound");
+
+    const aborted = await adapter.abortMultipartUpload({ key: KEY, uploadId: "nope" });
+    expect(!aborted.ok && aborted.error.code).toBe("NotFound");
+  });
+
+  it("complete with a part that was never uploaded returns NotFound", async () => {
+    const created = await adapter.createMultipartUpload({ key: KEY });
+    if (!created.ok) throw new Error("unreachable");
+    const uploadId = created.value.uploadId;
+    await adapter.uploadPart({ key: KEY, uploadId, partNumber: 1, body: new Uint8Array([1]) });
+
+    const done = await adapter.completeMultipartUpload({
+      key: KEY,
+      uploadId,
+      parts: [
+        { partNumber: 1, etag: "e1" },
+        { partNumber: 2, etag: "e-missing" },
+      ],
+    });
+    expect(!done.ok && done.error.code).toBe("NotFound");
+  });
+
+  it("abort discards the session: later parts for the same uploadId fail", async () => {
+    const created = await adapter.createMultipartUpload({ key: KEY });
+    if (!created.ok) throw new Error("unreachable");
+    const uploadId = created.value.uploadId;
+
+    const aborted = await adapter.abortMultipartUpload({ key: KEY, uploadId });
+    expect(aborted.ok).toBe(true);
+
+    const up = await adapter.uploadPart({
+      key: KEY,
+      uploadId,
+      partNumber: 1,
+      body: new Uint8Array([1]),
+    });
+    expect(!up.ok && up.error.code).toBe("NotFound");
+  });
+});
+
 // Reference asTenantId so vitest doesn't complain if it's a future
 // unused import (the test currently doesn't use it but the type
 // surfaces are part of the public API).

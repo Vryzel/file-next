@@ -50,9 +50,10 @@ import type {
 
 describe("T-012: S3CompatibleAdapter", () => {
   describe("interface shape", () => {
-    it("has exactly 13 methods (defensive count)", () => {
-      // If a future PR adds a 14th method (or accidentally drops one),
-      // this assertion fires. Update the count AND the test plan.
+    it("has exactly 17 methods (defensive count)", () => {
+      // If a future PR adds an 18th method (or accidentally drops
+      // one), this assertion fires. Update the count AND the test
+      // plan. v0.2 added the 4 multipart primitives.
       const methodNames: Array<keyof S3CompatibleAdapter> = [
         "list",
         "read",
@@ -67,8 +68,12 @@ describe("T-012: S3CompatibleAdapter", () => {
         "createPresignedUploadUrl",
         "createPresignedDownloadUrl",
         "getPublicUrl",
+        "createMultipartUpload",
+        "uploadPart",
+        "completeMultipartUpload",
+        "abortMultipartUpload",
       ];
-      expect(methodNames).toHaveLength(13);
+      expect(methodNames).toHaveLength(17);
     });
   });
 
@@ -104,6 +109,14 @@ describe("T-012: S3CompatibleAdapter", () => {
           ({ ok: true, value: { url: "https://example" } }),
         getPublicUrl: async (_input: GetPublicUrlInput): Promise<Result<GetPublicUrlOutput, FileSystemError>> =>
           ({ ok: true, value: { url: "https://example" } }),
+        createMultipartUpload: async () =>
+          ({ ok: true, value: { uploadId: "u", key: "k" as never } }),
+        uploadPart: async () =>
+          ({ ok: true, value: { etag: "e", partNumber: 1 } }),
+        completeMultipartUpload: async () =>
+          ({ ok: true, value: {} }),
+        abortMultipartUpload: async () =>
+          ({ ok: true, value: {} }),
       };
       expectTypeOf(mock).toMatchTypeOf<S3CompatibleAdapter>();
     });
@@ -129,6 +142,14 @@ describe("T-012: S3CompatibleAdapter", () => {
         createPresignedUploadUrl: async () => ({ ok: true, value: { url: "u", method: "PUT" } }),
         createPresignedDownloadUrl: async () => ({ ok: true, value: { url: "u" } }),
         getPublicUrl: async () => ({ ok: true, value: { url: "u" } }),
+        createMultipartUpload: async () =>
+          ({ ok: true, value: { uploadId: "u", key: "k" as never } }),
+        uploadPart: async () =>
+          ({ ok: true, value: { etag: "e", partNumber: 1 } }),
+        completeMultipartUpload: async () =>
+          ({ ok: true, value: {} }),
+        abortMultipartUpload: async () =>
+          ({ ok: true, value: {} }),
       };
       expectTypeOf(mixed).toMatchTypeOf<S3CompatibleAdapter>();
     });

@@ -1,5 +1,5 @@
 /**
- * In-memory implementation of the 13-method `S3CompatibleAdapter` contract.
+ * In-memory implementation of the 17-method `S3CompatibleAdapter` contract.
  *
  * Why this exists:
  *   - **Demo / try-it-now experience**: lets the consumer run the
@@ -29,10 +29,11 @@
  *   - Not optimized for large blobs — the in-memory `Map` holds
  *     every byte in RAM. A 5 GB PUT occupies 5 GB of heap.
  *
- * The 13-method count is enforced by the S3 adapter's contract test
+ * The 17-method count is enforced by the S3 adapter's contract test
  * (`packages/core/tests/storage/adapter.test.ts`); adding/removing
  * a method here must be reflected there too.
  */
+import { randomUUID } from "node:crypto";
 import type { Result } from "@/types/result";
 import { FileSystemError, RETRYABLE_BY_CODE } from "@/errors";
 import { asS3Key, asPrefix, type S3Key, type Prefix } from "@/types/branded";
@@ -64,6 +65,14 @@ import type {
   PresignedDownloadOutput,
   GetPublicUrlInput,
   GetPublicUrlOutput,
+  CreateMultipartUploadInput,
+  CreateMultipartUploadOutput,
+  UploadPartInput,
+  UploadPartOutput,
+  CompleteMultipartUploadInput,
+  CompleteMultipartUploadOutput,
+  AbortMultipartUploadInput,
+  AbortMultipartUploadOutput,
 } from "../adapter";
 import { MAX_SINGLE_PUT_SIZE } from "../s3-adapter";
 
@@ -128,6 +137,23 @@ export function createMemoryAdapter(
 
   const objects = new Map<S3Key, MemoryObject>();
   let etagCounter = 0;
+
+  /**
+   * In-flight multipart upload sessions. Keyed by `${key}::${uploadId}`
+   * so two parallel sessions on the same key don't collide. The
+   * `aborted` flag is what `abortMultipartUpload` flips and what
+   * subsequent `uploadPart` / `completeMultipartUpload` calls check
+   * to return `NotFound` (S3 semantics: an aborted session is gone).
+   */
+  interface MultipartSession {
+    readonly key: S3Key;
+    readonly contentType: string;
+    readonly metadata: Record<string, string>;
+    readonly parts: Map<number, Uint8Array>;
+    aborted: boolean;
+  }
+  const sessions = new Map<string, MultipartSession>();
+  const sessionKey = (key: S3Key, uploadId: string): string => `${key}::${uploadId}`;
 
   /** Return a deep-copied snapshot (callers can't mutate the map). */
   const store = (): MemoryStoreSnapshot => {
@@ -225,7 +251,7 @@ export function createMemoryAdapter(
   };
 
   // ---------------------------------------------------------------------
-  // 13 methods
+  // 17 methods
   // ---------------------------------------------------------------------
 
   const list = async (input: ListInput): Promise<Result<ListOutput, FileSystemError>> => {
@@ -407,6 +433,104 @@ export function createMemoryAdapter(
     };
   };
 
+  // ---------------------------------------------------------------------
+  // Multipart upload primitives (v0.2).
+  //
+  // The in-memory adapter mirrors S3's session semantics: each
+  // `createMultipartUpload` returns an opaque `uploadId`; subsequent
+  // `uploadPart` calls accumulate per-part bytes keyed by
+  // `partNumber`; `completeMultipartUpload` assembles the bytes in
+  // the caller's part order and writes them into the objects Map
+  // (so a subsequent `read` returns the assembled body); and
+  // `abortMultipartUpload` flips a flag that makes any later
+  // reference to the same uploadId return `NotFound` (matching the
+  // S3 behaviour where an aborted session is gone from the
+  // server's perspective).
+  // ---------------------------------------------------------------------
+
+  const createMultipartUpload = async (
+    input: CreateMultipartUploadInput,
+  ): Promise<Result<CreateMultipartUploadOutput, FileSystemError>> => {
+    const uploadId = randomUUID();
+    sessions.set(sessionKey(input.key, uploadId), {
+      key: input.key,
+      contentType: resolveContentType(input),
+      metadata: { ...(input.metadata ?? {}) },
+      parts: new Map(),
+      aborted: false,
+    });
+    return {
+      ok: true,
+      value: { uploadId, key: input.key },
+    };
+  };
+
+  const uploadPart = async (
+    input: UploadPartInput,
+  ): Promise<Result<UploadPartOutput, FileSystemError>> => {
+    const session = sessions.get(sessionKey(input.key, input.uploadId));
+    if (!session || session.aborted) {
+      return { ok: false, error: notFound(input.uploadId) };
+    }
+    session.parts.set(input.partNumber, input.body);
+    return {
+      ok: true,
+      value: { etag: randomUUID(), partNumber: input.partNumber },
+    };
+  };
+
+  const completeMultipartUpload = async (
+    input: CompleteMultipartUploadInput,
+  ): Promise<Result<CompleteMultipartUploadOutput, FileSystemError>> => {
+    const session = sessions.get(sessionKey(input.key, input.uploadId));
+    if (!session || session.aborted) {
+      return { ok: false, error: notFound(input.uploadId) };
+    }
+    // S3 semantics: every partNumber in the caller's list must
+    // have been uploaded. Otherwise the complete fails.
+    for (const { partNumber } of input.parts) {
+      if (!session.parts.has(partNumber)) {
+        return { ok: false, error: notFound(input.uploadId) };
+      }
+    }
+    // Assemble in the caller's order (S3 honours the part list
+    // order; we do NOT sort).
+    const totalLen = input.parts.reduce(
+      (sum, p) => sum + (session.parts.get(p.partNumber)?.byteLength ?? 0),
+      0,
+    );
+    const assembled = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const { partNumber } of input.parts) {
+      const chunk = session.parts.get(partNumber)!;
+      assembled.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    etagCounter += 1;
+    const now = new Date();
+    objects.set(asS3Key(input.key), {
+      body: assembled,
+      contentType: session.contentType,
+      userMetadata: { ...session.metadata },
+      createdAt: now,
+      updatedAt: now,
+    });
+    sessions.delete(sessionKey(input.key, input.uploadId));
+    return { ok: true, value: { etag: fakeEtag(assembled.byteLength, etagCounter) } };
+  };
+
+  const abortMultipartUpload = async (
+    input: AbortMultipartUploadInput,
+  ): Promise<Result<AbortMultipartUploadOutput, FileSystemError>> => {
+    const session = sessions.get(sessionKey(input.key, input.uploadId));
+    if (!session) {
+      return { ok: false, error: notFound(input.uploadId) };
+    }
+    session.aborted = true;
+    sessions.delete(sessionKey(input.key, input.uploadId));
+    return { ok: true, value: {} };
+  };
+
   return {
     list,
     read,
@@ -421,6 +545,10 @@ export function createMemoryAdapter(
     createPresignedUploadUrl,
     createPresignedDownloadUrl,
     getPublicUrl,
+    createMultipartUpload,
+    uploadPart,
+    completeMultipartUpload,
+    abortMultipartUpload,
     store,
   } as S3CompatibleAdapter & { readonly store: () => MemoryStoreSnapshot };
 }
