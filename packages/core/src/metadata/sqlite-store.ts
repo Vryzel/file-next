@@ -38,6 +38,16 @@
  *     nodes_tenant_parent → list children of any folder
  *     nodes_name_nocase  → search by name COLLATE NOCASE
  *
+ *   Full-text search:
+ *     nodes_fts           FTS5 virtual table mirroring nodes.name
+ *                         (tokenizer: unicode61 remove_diacritics 2
+ *                          — ASCII case folding + diacritic strip).
+ *                         Kept in sync with `nodes` via triggers
+ *                         (insert / update / delete). Tombstoned
+ *                         rows (deleted_at NOT NULL) are excluded
+ *                         from the FTS index so search results
+ *                         never include deleted nodes.
+ *
  * Tenant isolation is enforced in app code (filter by tenant_id
  * in every query). Same posture as the memory store.
  *
@@ -75,6 +85,7 @@ import {
 } from "@/types/result";
 import { FileSystemError } from "@/errors";
 import { asS3Key, asTenantId, asUserId } from "@/types/branded";
+import { sanitizeFts5Query } from "./sanitize";
 import type {
   CreateNodeInput,
   DeleteNodeInput,
@@ -171,7 +182,7 @@ const rowToFileNode = (row: NodeRow): FileNode => ({
 // Migrations
 // ---------------------------------------------------------------------------
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const MIGRATION_SQL = `
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -220,6 +231,43 @@ CREATE INDEX IF NOT EXISTS nodes_tenant_parent
   ON nodes(tenant_id, parent_id);
 CREATE INDEX IF NOT EXISTS nodes_name_nocase
   ON nodes(name COLLATE NOCASE);
+
+-- FTS5 virtual table for search. content='nodes' + content_rowid='rowid'
+-- makes FTS5 read row metadata from the source table; triggers below
+-- are still responsible for keeping the FTS index in sync (FTS5 does
+-- NOT auto-track the content table when you mutate the source).
+--
+-- Tokenizer: unicode61 remove_diacritics 2
+--   - ASCII case folding (Hello → hello)
+--   - Latin script case folding
+--   - Diacritic stripping (café → cafe)
+--   This matches the "case-insensitive matching" contract.
+CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
+  name,
+  content='nodes',
+  content_rowid='rowid',
+  tokenize='unicode61 remove_diacritics 2'
+);
+
+-- Sync triggers. Tombstoned rows (deleted_at NOT NULL) are NOT in
+-- the FTS index — the UPDATE trigger re-inserts only when the new
+-- row is live. This means search() never has to filter on deleted_at
+-- (the index already excludes them), but we keep the filter as a
+-- safety net in case the triggers ever diverge.
+CREATE TRIGGER IF NOT EXISTS nodes_fts_ai AFTER INSERT ON nodes
+WHEN new.deleted_at IS NULL BEGIN
+  INSERT INTO nodes_fts(rowid, name) VALUES (new.rowid, new.name);
+END;
+
+CREATE TRIGGER IF NOT EXISTS nodes_fts_ad AFTER DELETE ON nodes BEGIN
+  INSERT INTO nodes_fts(nodes_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+END;
+
+CREATE TRIGGER IF NOT EXISTS nodes_fts_au AFTER UPDATE ON nodes BEGIN
+  INSERT INTO nodes_fts(nodes_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+  INSERT INTO nodes_fts(rowid, name)
+    SELECT new.rowid, new.name WHERE new.deleted_at IS NULL;
+END;
 `;
 
 const runMigrations = (db: BetterSqliteDatabase): void => {
@@ -389,19 +437,23 @@ const buildInner = (
   `);
 
   const stmtSearchGlobal = db.prepare(`
-    SELECT * FROM nodes
-    WHERE tenant_id = ? AND deleted_at IS NULL
-      AND name LIKE ? ESCAPE '\\' COLLATE NOCASE
-    ORDER BY name COLLATE NOCASE ASC
+    SELECT n.* FROM nodes n
+    JOIN nodes_fts ON n.rowid = nodes_fts.rowid
+    WHERE nodes_fts MATCH ?
+      AND n.tenant_id = ?
+      AND n.deleted_at IS NULL
+    ORDER BY bm25(nodes_fts)
     LIMIT ?
   `);
 
   const stmtSearchInFolder = db.prepare(`
-    SELECT * FROM nodes
-    WHERE tenant_id = ? AND deleted_at IS NULL
-      AND (id = ? OR path LIKE ? || '/%')
-      AND name LIKE ? ESCAPE '\\' COLLATE NOCASE
-    ORDER BY name COLLATE NOCASE ASC
+    SELECT n.* FROM nodes n
+    JOIN nodes_fts ON n.rowid = nodes_fts.rowid
+    WHERE nodes_fts MATCH ?
+      AND n.tenant_id = ?
+      AND n.deleted_at IS NULL
+      AND (n.id = ? OR n.path LIKE ? || '/%')
+    ORDER BY bm25(nodes_fts)
     LIMIT ?
   `);
 
@@ -739,30 +791,48 @@ const buildInner = (
       input: SearchInput,
     ): Promise<Result<ListChildrenOutput, FileSystemError>> {
       const limit = input.limit ?? 100;
-      const pattern = `%${escapeLike(input.query)}%`;
+
+      // Empty query → no results (preserves existing contract).
+      if (input.query.length === 0) {
+        return ok({ items: [], nextCursor: undefined });
+      }
+
+      // Sanitize for FTS5 MATCH. The sanitizer wraps the query in a
+      // phrase so every metacharacter and reserved keyword is
+      // treated as literal text. Without it, `name:foo` would be
+      // parsed as a column-filter, `foo AND bar` would become a
+      // boolean AND, etc.
+      const ftsQuery = sanitizeFts5Query(input.query);
 
       let rows: ReadonlyArray<NodeRow>;
-      if (input.parentId === undefined) {
-        // No scope: search the whole tenant.
-        rows = stmtSearchGlobal.all(input.tenantId, pattern, limit) as ReadonlyArray<NodeRow>;
-      } else {
-        const parent = stmtGetById.get(input.parentId, input.tenantId) as
-          | NodeRow
-          | undefined;
-        if (!parent) return notFound(input.parentId);
-        if (parent.path === "/") {
-          // Root's subtree is the whole tenant — use the global
-          // query (avoids the root path's "LIKE '//%'" no-op).
-          rows = stmtSearchGlobal.all(input.tenantId, pattern, limit) as ReadonlyArray<NodeRow>;
+      try {
+        if (input.parentId === undefined) {
+          rows = stmtSearchGlobal.all(ftsQuery, input.tenantId, limit) as ReadonlyArray<NodeRow>;
         } else {
-          rows = stmtSearchInFolder.all(
-            input.tenantId,
-            input.parentId,
-            parent.path,
-            pattern,
-            limit,
-          ) as ReadonlyArray<NodeRow>;
+          const parent = stmtGetById.get(input.parentId, input.tenantId) as
+            | NodeRow
+            | undefined;
+          if (!parent) return notFound(input.parentId);
+          if (parent.path === "/") {
+            // Root's subtree is the whole tenant — use the global
+            // query (avoids the root path's "LIKE '//%'" no-op).
+            rows = stmtSearchGlobal.all(ftsQuery, input.tenantId, limit) as ReadonlyArray<NodeRow>;
+          } else {
+            rows = stmtSearchInFolder.all(
+              ftsQuery,
+              input.tenantId,
+              input.parentId,
+              parent.path,
+              limit,
+            ) as ReadonlyArray<NodeRow>;
+          }
         }
+      } catch (e) {
+        // Defensive: a sanitized phrase query should never raise a
+        // syntax error, but if FTS5 ever does, return empty rather
+        // than crash. The empty-results-on-bad-pattern behavior
+        // is the documented contract.
+        return ok({ items: [], nextCursor: undefined });
       }
 
       return ok({

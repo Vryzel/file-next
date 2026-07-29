@@ -4,8 +4,8 @@ import { Pool } from "pg";
 import { createMemoryStore } from "@/metadata/memory-store";
 import { createSqliteStore } from "@/metadata/sqlite-store";
 import { createPostgresStore } from "@/metadata/postgres-store";
-import { asS3Key, asTenantId } from "@/types/branded";
-import type { MetadataStore } from "@/metadata/store";
+import { asS3Key, asTenantId, asUserId } from "@/types/branded";
+import type { CreateNodeInput, MetadataStore } from "@/metadata/store";
 
 const TEST_URL =
   process.env.POSTGRES_TEST_URL ??
@@ -25,6 +25,36 @@ const stores: Array<[string, () => MetadataStore]> = [
 afterAll(async () => {
   await adminPool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
   await adminPool.end();
+});
+
+const makeFile = (
+  tenantId: ReturnType<typeof asTenantId>,
+  overrides: Partial<CreateNodeInput> = {},
+): CreateNodeInput => ({
+  tenantId,
+  parentId: null,
+  name: "alpha.txt",
+  kind: "file",
+  size: 13,
+  mimeType: "text/plain",
+  s3Key: "alpha.txt",
+  ownerId: asUserId("user-1"),
+  ...overrides,
+});
+
+const makeFolder = (
+  tenantId: ReturnType<typeof asTenantId>,
+  overrides: Partial<CreateNodeInput> = {},
+): CreateNodeInput => ({
+  tenantId,
+  parentId: null,
+  name: "f",
+  kind: "folder",
+  size: 0,
+  mimeType: "",
+  s3Key: "",
+  ownerId: asUserId("user-1"),
+  ...overrides,
 });
 
 describe.each(stores)("MetadataStore orphan contract — %s", (_, createStore) => {
@@ -68,5 +98,82 @@ describe.each(stores)("MetadataStore orphan contract — %s", (_, createStore) =
     expect(missing.ok).toBe(false);
     if (missing.ok) return;
     expect(missing.error.code).toBe("NotFound");
+  });
+});
+
+describe.each(stores)("MetadataStore search contract — %s", (_, createStore) => {
+  it("returns the inserted row for a basic case-insensitive match", async () => {
+    const store = createStore();
+    const tenantId = asTenantId(`tenant-${randomUUID()}`);
+    await store.createNode(makeFile(tenantId, { name: "Alpha.txt" }));
+
+    const r = await store.search({ tenantId, query: "ALPHA" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items.map((n) => n.name)).toEqual(["Alpha.txt"]);
+  });
+
+  it("does not crash on FTS5 / LIKE special characters", async () => {
+    const store = createStore();
+    const tenantId = asTenantId(`tenant-${randomUUID()}`);
+    await store.createNode(makeFile(tenantId, { name: "alpha.txt" }));
+
+    const nasties = [
+      "100%",
+      "under_score",
+      "(parens)",
+      "*wild*",
+      "name:foo",
+      "foo AND bar",
+      "foo OR bar",
+      "foo NOT bar",
+      "foo NEAR bar",
+      'say "hi"',
+    ];
+    for (const q of nasties) {
+      const r = await store.search({ tenantId, query: q });
+      expect(r.ok, `query ${JSON.stringify(q)} should not crash`).toBe(true);
+    }
+  });
+
+  it("scopes results to the parentId subtree when provided", async () => {
+    const store = createStore();
+    const tenantId = asTenantId(`tenant-${randomUUID()}`);
+    await store.createNode(makeFile(tenantId, { name: "alpha-root.txt" }));
+    const f = await store.createNode(makeFolder(tenantId, { name: "f" }));
+    if (!f.ok) throw new Error("setup");
+    await store.createNode(
+      makeFile(tenantId, { parentId: f.value.id, name: "alpha-in-folder.txt" }),
+    );
+
+    const r = await store.search({ tenantId, query: "alpha", parentId: f.value.id });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items.map((n) => n.name)).toEqual(["alpha-in-folder.txt"]);
+  });
+
+  it("enforces tenant isolation — tenant A never sees tenant B's matches", async () => {
+    const store = createStore();
+    const tenantA = asTenantId(`tenant-a-${randomUUID()}`);
+    const tenantB = asTenantId(`tenant-b-${randomUUID()}`);
+    await store.createNode(makeFile(tenantA, { name: "shared.txt" }));
+    await store.createNode(makeFile(tenantB, { name: "shared.txt" }));
+
+    const a = await store.search({ tenantId: tenantA, query: "shared" });
+    expect(a.ok).toBe(true);
+    if (!a.ok) return;
+    expect(a.value.items).toHaveLength(1);
+    expect(a.value.items[0]?.tenantId).toBe(tenantA);
+  });
+
+  it("returns empty results for an empty query", async () => {
+    const store = createStore();
+    const tenantId = asTenantId(`tenant-${randomUUID()}`);
+    await store.createNode(makeFile(tenantId, { name: "alpha.txt" }));
+
+    const r = await store.search({ tenantId, query: "" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items).toEqual([]);
   });
 });

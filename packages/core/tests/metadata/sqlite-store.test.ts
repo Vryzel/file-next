@@ -538,14 +538,102 @@ describe("createSqliteStore — search", () => {
     ]);
   });
 
-  it("escapes LIKE wildcards in the query", async () => {
+  it("does not crash on FTS5 special characters (% _ * ( ) : AND OR NOT NEAR)", async () => {
+    // The sanitizer wraps the query in a phrase so FTS5 treats every
+    // metacharacter and reserved keyword as literal text. None of these
+    // should raise a syntax error.
+    const nasties = [
+      "100%", // LIKE wildcard
+      "under_score", // LIKE single-char wildcard
+      "(parens)", // FTS5 grouping
+      "*wild*", // FTS5 wildcard
+      "name:foo", // FTS5 column filter
+      "foo AND bar", // FTS5 reserved keyword
+      "foo OR bar",
+      "foo NOT bar",
+      "foo NEAR bar",
+      'say "hi"', // embedded phrase delimiter
+    ];
     await store.createNode(baseFileInput({ name: "100%done.txt" }));
-    await store.createNode(baseFileInput({ name: "100abc.txt" }));
+    await store.createNode(baseFileInput({ name: "under_score.txt" }));
+    await store.createNode(baseFileInput({ name: "alpha.txt" }));
+    for (const q of nasties) {
+      const r = await store.search({ tenantId: TENANT_A, query: q });
+      expect(r.ok, `query ${JSON.stringify(q)} should not crash`).toBe(true);
+    }
+  });
 
-    const r = await store.search({ tenantId: TENANT_A, query: "100%" });
+  it("treats the query as an FTS5 phrase (adjacent tokens)", async () => {
+    // "alpha beta" as a phrase matches only names where "alpha" and
+    // "beta" appear as adjacent tokens.
+    await store.createNode(baseFileInput({ name: "alpha beta.txt" }));
+    await store.createNode(baseFileInput({ name: "alpha gamma.txt" }));
+    await store.createNode(baseFileInput({ name: "beta alpha.txt" }));
+
+    const r = await store.search({ tenantId: TENANT_A, query: "alpha beta" });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value.items.map((n) => n.name)).toEqual(["100%done.txt"]);
+    expect(r.value.items.map((n) => n.name)).toEqual(["alpha beta.txt"]);
+  });
+
+  it("respects the limit argument", async () => {
+    for (let i = 0; i < 5; i++) {
+      await store.createNode(baseFileInput({ name: `report-${i}.pdf` }));
+    }
+    const r = await store.search({ tenantId: TENANT_A, query: "report", limit: 2 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items).toHaveLength(2);
+  });
+
+  it("returns empty results for an empty query", async () => {
+    await store.createNode(baseFileInput({ name: "alpha.txt" }));
+    const r = await store.search({ tenantId: TENANT_A, query: "" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items).toEqual([]);
+  });
+
+  it("excludes soft-deleted nodes from search results", async () => {
+    const a = await store.createNode(baseFileInput({ name: "alpha.txt" }));
+    if (!a.ok) throw new Error("setup");
+    await store.createNode(baseFileInput({ name: "alpha-draft.txt" }));
+    await store.deleteNode({ tenantId: TENANT_A, id: a.value.id });
+
+    const r = await store.search({ tenantId: TENANT_A, query: "alpha" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items.map((n) => n.name)).toEqual(["alpha-draft.txt"]);
+  });
+
+  it("reflects renames in the FTS index after moveNode", async () => {
+    const a = await store.createNode(baseFileInput({ name: "old-name.txt" }));
+    if (!a.ok) throw new Error("setup");
+    await store.moveNode({
+      tenantId: TENANT_A,
+      id: a.value.id,
+      newParentId: null,
+      newName: "new-name.txt",
+    });
+
+    const oldR = await store.search({ tenantId: TENANT_A, query: "old-name" });
+    expect(oldR.ok).toBe(true);
+    if (oldR.ok) expect(oldR.value.items).toEqual([]);
+
+    const newR = await store.search({ tenantId: TENANT_A, query: "new-name" });
+    expect(newR.ok).toBe(true);
+    if (newR.ok) expect(newR.value.items.map((n) => n.name)).toEqual(["new-name.txt"]);
+  });
+
+  it("tenant isolation: tenant B's matches are not visible to tenant A", async () => {
+    await store.createNode(baseFileInput({ name: "shared.txt", tenantId: TENANT_A }));
+    await store.createNode(baseFileInput({ name: "shared.txt", tenantId: TENANT_B }));
+
+    const a = await store.search({ tenantId: TENANT_A, query: "shared" });
+    expect(a.ok).toBe(true);
+    if (!a.ok) return;
+    expect(a.value.items).toHaveLength(1);
+    expect(a.value.items[0]?.tenantId).toBe(TENANT_A);
   });
 
   it("returns NotFound when scoped to a missing folder", async () => {

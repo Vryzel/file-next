@@ -23,7 +23,13 @@
  *   - moveNode (cascades path updates to descendants)
  *   - deleteNode (soft-delete, recursive for folders)
  *   - updateMetadata (merge or replace)
- *   - search (case-insensitive name contains)
+ *   - search (case-insensitive name CONTAINS — v0.2 stays naive:
+ *           in-process Map doesn't need an FTS index. The SQLite
+ *           adapter uses FTS5 + sanitization and the Postgres
+ *           adapter uses pg_trgm + ILIKE; the memory store's
+ *           substring match is the cheapest correct answer for
+ *           the use case. Don't "optimize" this without thinking
+ *           about the contract test that pins the behavior.)
  *   - getPath (walk up via parentId)
  *   - reconcile (no-op: no external source to compare against)
  */
@@ -347,6 +353,12 @@ export const createMemoryStore = (): MetadataStore => {
     },
 
     async search(input: SearchInput): Promise<Result<ListChildrenOutput, FileSystemError>> {
+      // Empty query → no results (v0.2 contract). Without this,
+      // `String.includes("")` would match every node.
+      if (input.query.length === 0) {
+        return ok({ items: [], nextCursor: undefined });
+      }
+
       const query = input.query.toLowerCase();
 
       // Determine the scope: the parent folder's subtree, or the

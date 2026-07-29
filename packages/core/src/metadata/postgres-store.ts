@@ -701,6 +701,13 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
     ): Promise<Result<ListChildrenOutput, FileSystemError>> {
       await ensureInitialized();
       const limit = input.limit ?? 100;
+
+      // Empty query → no results (v0.2 contract). Without this,
+      // `ILIKE '%%'` would match every node in the tenant.
+      if (input.query.length === 0) {
+        return ok({ items: [], nextCursor: undefined });
+      }
+
       const pattern = `%${escapeLike(input.query)}%`;
 
       let res;
