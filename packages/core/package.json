@@ -15,6 +15,12 @@
       "require": "./dist/index.cjs",
       "default": "./dist/index.js"
     },
+    "./errors": {
+      "types": "./dist/errors/index.d.ts",
+      "import": "./dist/errors/index.js",
+      "require": "./dist/errors/index.cjs",
+      "default": "./dist/errors/index.js"
+    },
     "./server": {
       "types": "./dist/server/index.d.ts",
       "import": "./dist/server/index.js",

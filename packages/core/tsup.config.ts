@@ -25,6 +25,7 @@ import path from "node:path";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
+    "errors/index": "src/errors/index.ts",
     "server/index": "src/server/entry.ts",
     "sync/index": "src/sync/index.ts",
   },
