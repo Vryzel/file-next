@@ -71,6 +71,7 @@ type Actions = {
   deleteFile: ReturnType<typeof vi.fn>;
   moveFile: ReturnType<typeof vi.fn>;
   copyFile: ReturnType<typeof vi.fn>;
+  renameFile: ReturnType<typeof vi.fn>;
 };
 
 /** Helper: pull the n-th argument passed to setFiles (which is a FileNode[]). */
@@ -87,6 +88,7 @@ const renderActions = (overrides: Partial<Actions> = {}) => {
     deleteFile: vi.fn(async () => okResult({ id: "x" })),
     moveFile: vi.fn(async () => okResult({ id: "x" })),
     copyFile: vi.fn(async () => okResult({ id: "x" })),
+    renameFile: vi.fn(async () => undefined),
     ...overrides,
   };
   // Destructure the inner `result` so callers can use
@@ -208,6 +210,30 @@ describe("useFileActions — spec headless#3", () => {
     expect(setFiles).toHaveBeenCalledTimes(1);
     const rolledBack = setFilesCall(setFiles, 0);
     expect(rolledBack).toBe(files);
+    expect(result.current.error).toBe(networkError);
+  });
+
+  it("renameFile optimistically updates the name and calls the action", async () => {
+    const { result, setFiles, actions } = renderActions();
+    await act(async () => {
+      await result.current.renameFile("a", "renamed.txt");
+    });
+
+    expect(actions.renameFile).toHaveBeenCalledWith("a", "renamed.txt");
+    expect(setFilesCall(setFiles, 0).find((file) => file.id === "a")?.name).toBe("renamed.txt");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("renameFile restores the snapshot on failure", async () => {
+    const { result, files, setFiles } = renderActions({
+      renameFile: vi.fn(async () => Promise.reject(networkError)),
+    });
+    await act(async () => {
+      await result.current.renameFile("a", "renamed.txt");
+    });
+
+    expect(setFiles).toHaveBeenCalledTimes(2);
+    expect(setFilesCall(setFiles, 1)).toBe(files);
     expect(result.current.error).toBe(networkError);
   });
 
