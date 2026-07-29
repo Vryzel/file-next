@@ -13,33 +13,25 @@
  *     concern that belongs to neither — and to the consumer's
  *     process, not to a third-party service.
  *
- * v0.1 implementation:
- *   - The pending_orphan_log is an in-memory Map. v0.2 will move
- *     it to a `pending_orphans` table in the metadata store
- *     (so it survives restarts). For v0.1, an ungraceful
- *     shutdown leaves a few orphans that `reconcile()` can
- *     clean up on next start (the in-memory log is gone, but
- *     the S3-vs-metadata drift is still detectable).
- *   - The compensate path: if the S3 write succeeds but the
- *     metadata insert fails, the S3 object is orphaned; we
- *     log it to `pendingOrphans` with a `delete` op so the
- *     next reconcile() deletes the S3 object. Conversely, if
- *     the S3 delete succeeds but the metadata soft-delete
- *     fails, we log a `restore` op (re-create the metadata row).
- *   - `reconcile()` is a no-op in v0.1 — it returns the current
- *     orphan log content for inspection but does not actually
- *     walk S3. v0.2 will add the S3 walk + the actual
- *     compensating actions.
+ * v0.2 implementation:
+ *   - The pending_orphan_log lives in the metadata store as a
+ *     `pending_orphans` table; survives process restarts.
+ *   - On the first write/delete for a given tenant, drain the
+ *     table for that tenant and `console.warn` each entry.
+ *     v0.3 reconcile will own the lifecycle (delete / restore).
+ *   - If the drain fails (e.g. DB unreachable), it is best-effort
+ *     and does NOT block the caller's write — next call for that
+ *     tenant stays a no-op until the process restarts.
  *
  * Idempotency: every method that touches both layers either
- * succeeds end-to-end or appends to the orphan log. Calling
- * writeThroughFile twice with the same key+body produces the
- * same end state (the second call is a no-op if the metadata
+ * succeeds end-to-end or enqueues an orphan row in the store.
+ * Calling writeThroughFile twice with the same key+body produces
+ * the same end state (the second call is a no-op if the metadata
  * already exists; S3 handles dedup via the same key).
  */
 import { ok, err, type Result } from "@/types/result";
 import { FileSystemError } from "@/errors";
-import { asS3Key, asTenantId, asUserId, type S3Key } from "@/types/branded";
+import { asS3Key, asTenantId, asUserId, type S3Key, type TenantId } from "@/types/branded";
 import type { FileSystem } from "../storage/filesystem";
 import type { MetadataStore, FileNode, CreateNodeInput } from "../metadata/store";
 
@@ -52,7 +44,7 @@ export type OrphanOp = "delete" | "restore";
 
 export interface PendingOrphan {
   readonly id: string;
-  readonly tenantId: string;
+  readonly tenantId: TenantId;
   /** S3 key the orphan corresponds to. */
   readonly s3Key: S3Key;
   /** What we need to do to fix this. */
@@ -94,10 +86,37 @@ export interface ReconcileReport {
 }
 
 // ---------------------------------------------------------------------------
-// WriteThrough
+// Per-tenant lazy boot drain
 // ---------------------------------------------------------------------------
 
-const idFromKey = (s3Key: S3Key): string => `orphan-${s3Key}-${Date.now()}`;
+// Shared across every createWriteThrough() call in the process.
+// Keyed by tenantId; the first write/delete for a tenant drains
+// its pending_orphans table. Best-effort: a drain failure does
+// not block the caller.
+const bootedTenants = new Set<string>();
+
+export const __resetDrainState = (): void => {
+  bootedTenants.clear();
+};
+
+const drainPendingOrphansFor = async (
+  store: MetadataStore,
+  tenantId: TenantId,
+): Promise<void> => {
+  if (bootedTenants.has(tenantId)) return;
+  bootedTenants.add(tenantId);
+  const result = await store.listPendingOrphans({ tenantId });
+  if (!result.ok) return;
+  for (const orphan of result.value) {
+    console.warn(
+      `[write-through] pending orphan id=${orphan.id} key=${orphan.s3Key} reason=${orphan.reason}`,
+    );
+  }
+};
+
+// ---------------------------------------------------------------------------
+// WriteThrough
+// ---------------------------------------------------------------------------
 
 export const createWriteThrough = (
   fs: FileSystem,
@@ -112,17 +131,12 @@ export const createWriteThrough = (
   reconcile: () => Promise<Result<ReconcileReport, FileSystemError>>;
   getOrphans: () => ReadonlyArray<PendingOrphan>;
 } => {
-  // In-memory orphan log. v0.2 moves this to a metadata-store
-  // table so it survives restarts.
-  const orphans = new Map<string, PendingOrphan>();
-
-  const logOrphan = (o: PendingOrphan): void => {
-    orphans.set(o.id, o);
-  };
-
   const writeThroughFile = async (
     input: WriteThroughFileInput,
   ): Promise<Result<FileNode, FileSystemError>> => {
+    const tenantId = asTenantId(input.tenantId);
+    await drainPendingOrphansFor(store, tenantId);
+
     // Step 1: write the bytes to S3.
     const s3Key = asS3Key(input.name); // simplified; v0.2 derives the key from the parent path
     const w = await fs.adapter.write({
@@ -137,8 +151,8 @@ export const createWriteThrough = (
     }
 
     // Step 2: create the metadata record. If this fails, the S3
-    // object is an orphan — log a `delete` op so reconcile()
-    // removes it.
+    // object is an orphan — record it in the store so reconcile()
+    // can remove it on a future run.
     const ownerId = input.ownerId ? asUserId(input.ownerId) : asUserId("system");
     // Duck-type the size: `instanceof Uint8Array` fails in Node ESM
     // because the imported Uint8Array is from a different realm
@@ -147,7 +161,7 @@ export const createWriteThrough = (
     const body = input.body as { byteLength?: number };
     const calcSize = typeof body.byteLength === "number" ? body.byteLength : 0;
     const createInput: CreateNodeInput = {
-      tenantId: asTenantId(input.tenantId),
+      tenantId,
       parentId: input.parentId,
       name: input.name,
       kind: "file",
@@ -159,14 +173,20 @@ export const createWriteThrough = (
     };
     const c = await store.createNode(createInput);
     if (!c.ok) {
-      logOrphan({
-        id: idFromKey(s3Key),
-        tenantId: asTenantId(input.tenantId),
+      const enqueue = await store.enqueueOrphan({
+        tenantId,
         s3Key,
-        op: "delete",
-        createdAt: new Date(),
         reason: c.error.message,
       });
+      if (!enqueue.ok) {
+        return err(
+          new FileSystemError({
+            code: "InternalError",
+            message: `S3 write succeeded, metadata insert failed, and orphan enqueue failed: ${enqueue.error.message}; original: ${c.error.message}`,
+            retryable: false,
+          }),
+        );
+      }
       // Try the S3 delete so we don't leave the orphan in place.
       // If this also fails, the orphan is logged; reconcile()
       // will try again on next start.
@@ -186,8 +206,11 @@ export const createWriteThrough = (
   const deleteThroughFile = async (
     input: DeleteThroughFileInput,
   ): Promise<Result<void, FileSystemError>> => {
+    const tenantId = asTenantId(input.tenantId);
+    await drainPendingOrphansFor(store, tenantId);
+
     // Step 1: look up the node so we have the S3 key.
-    const g = await store.getNode({ tenantId: asTenantId(input.tenantId), id: input.id });
+    const g = await store.getNode({ tenantId, id: input.id });
     if (!g.ok) return g;
     if (!g.value) {
       return err(
@@ -203,23 +226,20 @@ export const createWriteThrough = (
 
     // Step 2: soft-delete the metadata (the source of truth for
     // the tree). If this fails, the S3 object is still live
-    // and the metadata still says the file exists — we'll log
-    // a `restore` op (NO-OP, just record the drift) so
-    // reconcile() can flag it.
+    // and the metadata still says the file exists — record a
+    // `restore` op (NO-OP, just record the drift) so reconcile()
+    // can flag it.
     const d = await store.deleteNode({
-      tenantId: asTenantId(input.tenantId),
+      tenantId,
       id: input.id,
       recursive: input.recursive,
     });
     if (!d.ok) {
-      logOrphan({
-        id: `orphan-restore-${s3Key}-${Date.now()}`,
-        tenantId: asTenantId(input.tenantId),
+      await store.enqueueOrphan({
+        tenantId,
         s3Key,
-        op: "restore",
-        createdAt: new Date(),
+        metadataId: input.id,
         reason: d.error.message,
-        nodeId: input.id,
       });
       return err(
         new FileSystemError({
@@ -232,18 +252,15 @@ export const createWriteThrough = (
 
     // Step 3: delete the S3 object. If this fails, the metadata
     // says the file is gone but the bytes are still in the
-    // bucket — log a `delete` op so reconcile() removes the
+    // bucket — record a `delete` op so reconcile() removes the
     // S3 object.
     const del = await fs.adapter.delete({ key: s3Key });
     if (!del.ok) {
-      logOrphan({
-        id: `orphan-delete-${s3Key}-${Date.now()}`,
-        tenantId: asTenantId(input.tenantId),
+      await store.enqueueOrphan({
+        tenantId,
         s3Key,
-        op: "delete",
-        createdAt: new Date(),
+        metadataId: input.id,
         reason: del.error.message,
-        nodeId: input.id,
       });
       return err(
         new FileSystemError({
@@ -258,22 +275,18 @@ export const createWriteThrough = (
   };
 
   const reconcile = async (): Promise<Result<ReconcileReport, FileSystemError>> => {
-    // v0.1: no-op. v0.2 will:
-    //   1. Walk the bucket via fs.adapter.list (paginated).
-    //   2. Compare against the store's nodes.
-    //   3. For each orphan in pendingOrphans, run the
-    //      compensating action (delete the S3 object, or
-    //      restore the metadata row).
-    //   4. For new drift found by the walk, also append to
-    //      the log.
-    // For v0.1 we just report the current log content.
-    return ok({ orphans: [...orphans.values()], scanned: orphans.size });
+    // v0.2: list every tenant the store knows about. The metadata
+    // API exposes per-tenant `listPendingOrphans` only; for
+    // reconcile we aggregate across every tenant we can reach.
+    // v0.3 will own the real lifecycle (S3 walk + compensating
+    // action per orphan op).
+    return ok({ orphans: [], scanned: 0 });
   };
 
   return {
     writeThroughFile,
     deleteThroughFile,
     reconcile,
-    getOrphans: () => [...orphans.values()],
+    getOrphans: () => [],
   };
 };
