@@ -24,7 +24,7 @@
  *     via `upload()`), so double-invocation is not an issue.
  */
 import { useCallback, useReducer, useRef, type Reducer } from "react";
-import { FileSystemError } from "./file-system-error";
+import { FileSystemError } from "file-next";
 
 // ---------------------------------------------------------------------------
 // Public types

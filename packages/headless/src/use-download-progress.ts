@@ -18,7 +18,7 @@
  *   - `fetch` is global; tests stub it via `vi.stubGlobal('fetch', ...)`.
  */
 import { useCallback, useEffect, useReducer, useRef, type Reducer } from "react";
-import { FileSystemError } from "./file-system-error";
+import { FileSystemError } from "file-next";
 
 // ---------------------------------------------------------------------------
 // Public types

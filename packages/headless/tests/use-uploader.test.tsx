@@ -16,7 +16,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useUploader } from "@/use-uploader";
-import { FileSystemError } from "@/file-system-error";
+import { FileSystemError } from "file-next";
 
 // ---------------------------------------------------------------------------
 // XHR stub
