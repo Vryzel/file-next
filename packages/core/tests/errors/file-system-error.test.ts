@@ -172,6 +172,19 @@ describe("T-007b: fromAws / fromPg / fromSqlite mappers", () => {
       expect(e.cause?.code).toBe("NoSuchKey");
     });
 
+    it("S3 NoSuchUpload -> NotFound (retryable: false, cause.code preserved)", () => {
+      // v0.2 multipart: NoSuchUpload fires when an uploadId is unknown
+      // (aborted, expired, or never created) — semantically NotFound.
+      // No httpStatusCode on purpose: the NAME mapping must win even
+      // when the SDK surfaces no status (the 404 fallback alone would
+      // be accidental coverage).
+      const e = fromAws(makeAwsError("NoSuchUpload", "The specified upload does not exist."));
+      expect(e).toBeInstanceOf(FileSystemError);
+      expect(e.code).toBe("NotFound");
+      expect(e.retryable).toBe(false);
+      expect(e.cause?.code).toBe("NoSuchUpload");
+    });
+
     it("5xx HTTP status -> InternalError (retryable: true)", () => {
       const e = fromAws(makeAwsError("InternalError", "Service unavailable.", 503));
       expect(e.code).toBe("InternalError");
