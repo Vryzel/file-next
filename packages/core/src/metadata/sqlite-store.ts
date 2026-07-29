@@ -74,7 +74,7 @@ import {
   type Result,
 } from "@/types/result";
 import { FileSystemError } from "@/errors";
-import { asTenantId, asUserId } from "@/types/branded";
+import { asS3Key, asTenantId, asUserId } from "@/types/branded";
 import type {
   CreateNodeInput,
   DeleteNodeInput,
@@ -130,6 +130,24 @@ interface NodeRow {
   readonly deleted_at: string | null;
 }
 
+interface OrphanRow {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly s3_key: string;
+  readonly metadata_id: string | null;
+  readonly reason: string;
+  readonly created_at: string;
+}
+
+const rowToPendingOrphan = (row: OrphanRow) => ({
+  id: row.id,
+  tenantId: asTenantId(row.tenant_id),
+  s3Key: asS3Key(row.s3_key),
+  metadataId: row.metadata_id,
+  reason: row.reason,
+  createdAt: new Date(row.created_at),
+});
+
 const rowToFileNode = (row: NodeRow): FileNode => ({
   id: row.id,
   tenantId: asTenantId(row.tenant_id),
@@ -153,7 +171,7 @@ const rowToFileNode = (row: NodeRow): FileNode => ({
 // Migrations
 // ---------------------------------------------------------------------------
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const MIGRATION_SQL = `
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -177,6 +195,18 @@ CREATE TABLE IF NOT EXISTS nodes (
   updated_at  TEXT NOT NULL,
   deleted_at  TEXT
 );
+
+CREATE TABLE IF NOT EXISTS pending_orphans (
+  id          TEXT PRIMARY KEY,
+  tenant_id   TEXT NOT NULL,
+  s3_key      TEXT NOT NULL,
+  metadata_id TEXT,
+  reason      TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS pending_orphans_tenant_created
+  ON pending_orphans(tenant_id, created_at);
 
 -- Name uniqueness for LIVE rows only. NULL deleted_at lets two
 -- deleted rows share a name; a new live row then claims the slot.
@@ -247,6 +277,9 @@ export const createSqliteStore = (
     search: wrap((s, i) => s.search(i)),
     getPath: wrap((s, i) => s.getPath(i)),
     reconcile: wrap((s) => s.reconcile()),
+    enqueueOrphan: wrap((s, i) => s.enqueueOrphan(i)),
+    listPendingOrphans: wrap((s, i) => s.listPendingOrphans(i)),
+    deleteOrphan: wrap((s, i) => s.deleteOrphan(i)),
   };
 };
 
@@ -370,6 +403,23 @@ const buildInner = (
       AND name LIKE ? ESCAPE '\\' COLLATE NOCASE
     ORDER BY name COLLATE NOCASE ASC
     LIMIT ?
+  `);
+
+  const stmtEnqueueOrphan = db.prepare(`
+    INSERT INTO pending_orphans (
+      id, tenant_id, s3_key, metadata_id, reason, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  const stmtListPendingOrphans = db.prepare(`
+    SELECT * FROM pending_orphans
+    WHERE tenant_id = ?
+    ORDER BY created_at ASC, id ASC
+  `);
+
+  const stmtDeleteOrphan = db.prepare(`
+    DELETE FROM pending_orphans
+    WHERE tenant_id = ? AND id = ?
   `);
 
   // -------------------------------------------------------------------------
@@ -745,6 +795,52 @@ const buildInner = (
         if (!cursor) break;
       }
       return ok({ segments });
+    },
+
+    async enqueueOrphan(input) {
+      const id = makeId();
+      try {
+        stmtEnqueueOrphan.run(
+          id,
+          input.tenantId,
+          input.s3Key,
+          input.metadataId ?? null,
+          input.reason,
+          nowIso(),
+        );
+        return ok({ id });
+      } catch (error) {
+        return err(FileSystemError.fromSqlite(error));
+      }
+    },
+
+    async listPendingOrphans(input) {
+      try {
+        const rows = stmtListPendingOrphans.all(
+          input.tenantId,
+        ) as ReadonlyArray<OrphanRow>;
+        return ok(rows.map(rowToPendingOrphan));
+      } catch (error) {
+        return err(FileSystemError.fromSqlite(error));
+      }
+    },
+
+    async deleteOrphan(input) {
+      try {
+        const result = stmtDeleteOrphan.run(input.tenantId, input.id);
+        if (result.changes === 0) {
+          return err(
+            new FileSystemError({
+              code: "NotFound",
+              message: `Orphan ${input.id} not found`,
+              retryable: false,
+            }),
+          );
+        }
+        return ok(undefined);
+      } catch (error) {
+        return err(FileSystemError.fromSqlite(error));
+      }
     },
 
     async reconcile(): Promise<Result<ReconcileResult, FileSystemError>> {

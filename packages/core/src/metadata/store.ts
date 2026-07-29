@@ -23,7 +23,7 @@
  */
 import type { Result } from "@/types/result";
 import type { FileSystemError } from "@/errors";
-import type { TenantId, UserId } from "@/types/branded";
+import type { TenantId, UserId, S3Key } from "@/types/branded";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -218,4 +218,27 @@ export interface MetadataStore {
    * bucket via the adapter and compare.
    */
   reconcile(): Promise<Result<ReconcileResult, FileSystemError>>;
+
+  enqueueOrphan(input: {
+    tenantId: TenantId;
+    s3Key: S3Key;
+    metadataId?: string;
+    reason: string;
+  }): Promise<Result<{ id: string }, FileSystemError>>;
+
+  listPendingOrphans(input: {
+    tenantId: TenantId;
+  }): Promise<Result<Array<{
+    id: string;
+    tenantId: TenantId;
+    s3Key: S3Key;
+    metadataId: string | null;
+    reason: string;
+    createdAt: Date;
+  }>, FileSystemError>>;
+
+  deleteOrphan(input: {
+    tenantId: TenantId;
+    id: string;
+  }): Promise<Result<void, FileSystemError>>;
 }

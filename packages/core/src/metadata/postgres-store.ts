@@ -71,7 +71,7 @@ import {
   type Result,
 } from "@/types/result";
 import { FileSystemError } from "@/errors";
-import { asTenantId, asUserId } from "@/types/branded";
+import { asS3Key, asTenantId, asUserId } from "@/types/branded";
 import type {
   CreateNodeInput,
   DeleteNodeInput,
@@ -133,6 +133,24 @@ interface NodeRow extends QueryResultRow {
   readonly deleted_at: Date | null;
 }
 
+interface OrphanRow {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly s3_key: string;
+  readonly metadata_id: string | null;
+  readonly reason: string;
+  readonly created_at: Date;
+}
+
+const rowToPendingOrphan = (row: OrphanRow) => ({
+  id: row.id,
+  tenantId: asTenantId(row.tenant_id),
+  s3Key: asS3Key(row.s3_key),
+  metadataId: row.metadata_id,
+  reason: row.reason,
+  createdAt: row.created_at,
+});
+
 const rowToFileNode = (row: NodeRow): FileNode => ({
   id: row.id,
   tenantId: asTenantId(row.tenant_id),
@@ -156,7 +174,7 @@ const rowToFileNode = (row: NodeRow): FileNode => ({
 // Migrations
 // ---------------------------------------------------------------------------
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const MIGRATION_SQL = (schema: string): string => `
 CREATE SCHEMA IF NOT EXISTS "${schema}";
@@ -187,6 +205,18 @@ CREATE TABLE IF NOT EXISTS "${schema}".nodes (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at  TIMESTAMPTZ
 );
+
+CREATE TABLE IF NOT EXISTS "${schema}".pending_orphans (
+  id          UUID PRIMARY KEY,
+  tenant_id   TEXT NOT NULL,
+  s3_key      TEXT NOT NULL,
+  metadata_id TEXT,
+  reason      TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS pending_orphans_tenant_created
+  ON "${schema}".pending_orphans (tenant_id, created_at);
 
 -- Name uniqueness for non-root siblings.
 CREATE UNIQUE INDEX IF NOT EXISTS nodes_unique_live_nonroot_name
@@ -266,6 +296,9 @@ export const createPostgresStore = (
     search: wrap((s, i) => s.search(i)),
     getPath: wrap((s, i) => s.getPath(i)),
     reconcile: wrap((s) => s.reconcile()),
+    enqueueOrphan: wrap((s, i) => s.enqueueOrphan(i)),
+    listPendingOrphans: wrap((s, i) => s.listPendingOrphans(i)),
+    deleteOrphan: wrap((s, i) => s.deleteOrphan(i)),
   };
 };
 
@@ -738,6 +771,66 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       );
       if (res.rows.length === 0) return notFound(input.id);
       return ok({ segments: res.rows.map(rowToFileNode) });
+    },
+
+    async enqueueOrphan(input) {
+      await ensureInitialized();
+      const id = makeId();
+      try {
+        await pool.query(
+          `INSERT INTO "${schema}".pending_orphans (
+             id, tenant_id, s3_key, metadata_id, reason
+           ) VALUES ($1, $2, $3, $4, $5)`,
+          [
+            id,
+            input.tenantId,
+            input.s3Key,
+            input.metadataId ?? null,
+            input.reason,
+          ],
+        );
+        return ok({ id });
+      } catch (error) {
+        return err(FileSystemError.fromPg(error));
+      }
+    },
+
+    async listPendingOrphans(input) {
+      await ensureInitialized();
+      try {
+        const result = await pool.query<OrphanRow>(
+          `SELECT * FROM "${schema}".pending_orphans
+           WHERE tenant_id = $1
+           ORDER BY created_at ASC, id ASC`,
+          [input.tenantId],
+        );
+        return ok(result.rows.map(rowToPendingOrphan));
+      } catch (error) {
+        return err(FileSystemError.fromPg(error));
+      }
+    },
+
+    async deleteOrphan(input) {
+      await ensureInitialized();
+      try {
+        const result = await pool.query(
+          `DELETE FROM "${schema}".pending_orphans
+           WHERE tenant_id = $1 AND id = $2`,
+          [input.tenantId, input.id],
+        );
+        if (result.rowCount === 0) {
+          return err(
+            new FileSystemError({
+              code: "NotFound",
+              message: `Orphan ${input.id} not found`,
+              retryable: false,
+            }),
+          );
+        }
+        return ok(undefined);
+      } catch (error) {
+        return err(FileSystemError.fromPg(error));
+      }
     },
 
     async reconcile(): Promise<Result<ReconcileResult, FileSystemError>> {

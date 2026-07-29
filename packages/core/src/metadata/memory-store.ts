@@ -34,6 +34,7 @@ import {
 } from "@/types/result";
 import { FileSystemError } from "@/errors";
 import { asTenantId, asUserId } from "@/types/branded";
+import type { S3Key, TenantId } from "@/types/branded";
 import type {
   CreateNodeInput,
   DeleteNodeInput,
@@ -49,8 +50,18 @@ import type {
   UpdateMetadataInput,
 } from "./store";
 
+interface PendingOrphan {
+  readonly id: string;
+  readonly tenantId: TenantId;
+  readonly s3Key: S3Key;
+  readonly metadataId: string | null;
+  readonly reason: string;
+  readonly createdAt: Date;
+}
+
 export const createMemoryStore = (): MetadataStore => {
   const nodes = new Map<string, FileNode>();
+  const pendingOrphans = new Map<string, PendingOrphan>();
   // Index: tenantId + parentId -> ordered child ids. Rebuilt on
   // createNode / moveNode / deleteNode. Keeps listChildren O(k)
   // for the k children of a folder, not O(n) over the whole store.
@@ -382,6 +393,42 @@ export const createMemoryStore = (): MetadataStore => {
         cursor = nodes.get(cursor.parentId);
       }
       return ok({ segments });
+    },
+
+    async enqueueOrphan(input): Promise<Result<{ id: string }, FileSystemError>> {
+      const id = makeId();
+      pendingOrphans.set(id, {
+        id,
+        tenantId: input.tenantId,
+        s3Key: input.s3Key,
+        metadataId: input.metadataId ?? null,
+        reason: input.reason,
+        createdAt: new Date(),
+      });
+      return ok({ id });
+    },
+
+    async listPendingOrphans(input): Promise<Result<PendingOrphan[], FileSystemError>> {
+      return ok(
+        [...pendingOrphans.values()].filter(
+          (orphan) => orphan.tenantId === input.tenantId,
+        ),
+      );
+    },
+
+    async deleteOrphan(input): Promise<Result<void, FileSystemError>> {
+      const orphan = pendingOrphans.get(input.id);
+      if (!orphan || orphan.tenantId !== input.tenantId) {
+        return err(
+          new FileSystemError({
+            code: "NotFound",
+            message: `Orphan ${input.id} not found`,
+            retryable: false,
+          }),
+        );
+      }
+      pendingOrphans.delete(input.id);
+      return ok(undefined);
     },
 
     async reconcile(): Promise<Result<ReconcileResult, FileSystemError>> {
