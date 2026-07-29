@@ -41,6 +41,7 @@ import {
 } from "./multipart";
 
 export { MAX_SINGLE_PUT_SIZE };
+export { MULTIPART_PART_SIZE } from "./write";
 
 /**
  * Build a `S3CompatibleAdapter` from a `FileSystemConfig`. The

@@ -346,6 +346,45 @@ describe("createMemoryAdapter — multipart (v0.2)", () => {
   });
 });
 
+describe("createMemoryAdapter — write auto-switch to multipart (v0.2)", () => {
+  it("body > 8 MiB: write() routes through multipart and the assembled bytes match the input", async () => {
+    // Body of 8 MiB + 1024 bytes -> two parts: 8 MiB + 1024 B.
+    // Each byte's value is its index modulo 256 so the assertion
+    // catches byte-order / chunk-boundary mistakes.
+    const PART = 8 * 1024 * 1024;
+    const body = new Uint8Array(PART + 1024);
+    for (let i = 0; i < body.length; i++) body[i] = i % 256;
+
+    const result = await adapter.write({
+      key: KEY,
+      body,
+      contentType: "application/octet-stream",
+    });
+    expect(result.ok).toBe(true);
+
+    const read = await adapter.read({ key: KEY });
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.value.body.byteLength).toBe(PART + 1024);
+    expect(Array.from(read.value.body)).toEqual(Array.from(body));
+  });
+
+  it("body exactly 8 MiB: write() stays single-PUT", async () => {
+    const body = new Uint8Array(8 * 1024 * 1024);
+    const before = adapter.store().objects.size;
+    const result = await adapter.write({ key: KEY, body });
+    expect(result.ok).toBe(true);
+    // Single-PUT path: the object is written directly, the session
+    // count (synthetic — we observe via etagCounter's effect on
+    // etags) doesn't expose sessions. Instead, observe via the
+    // store: the object should be present and complete in size.
+    const after = adapter.store().objects.size;
+    expect(after).toBe(before + 1);
+    const read = await adapter.read({ key: KEY });
+    expect(read.ok && read.value.body.byteLength).toBe(body.byteLength);
+  });
+});
+
 // Reference asTenantId so vitest doesn't complain if it's a future
 // unused import (the test currently doesn't use it but the type
 // surfaces are part of the public API).

@@ -74,7 +74,7 @@ import type {
   AbortMultipartUploadInput,
   AbortMultipartUploadOutput,
 } from "../adapter";
-import { MAX_SINGLE_PUT_SIZE } from "../s3-adapter";
+import { MAX_SINGLE_PUT_SIZE, MULTIPART_PART_SIZE } from "../s3-adapter";
 
 /** A single object stored in the in-memory backend. */
 interface MemoryObject {
@@ -291,6 +291,14 @@ export function createMemoryAdapter(
 
   const write = async (input: WriteInput): Promise<Result<WriteOutput, FileSystemError>> => {
     const body = toBytes(input.body);
+    // Auto-switch to multipart for large Uint8Array bodies. The
+    // byte-length check mirrors the S3 adapter's switch condition
+    // so the two adapters behave identically. Stream / Blob /
+    // ArrayBuffer inputs skip the switch (they go single-PUT after
+    // `toBytes` reduces them to a Uint8Array).
+    if (input.body instanceof Uint8Array && body.byteLength > MULTIPART_PART_SIZE) {
+      return writeMultipartMemory(input, body);
+    }
     const sizeErr = validateWriteSize(body);
     if (sizeErr) return { ok: false, error: sizeErr };
     etagCounter += 1;
@@ -309,6 +317,68 @@ export function createMemoryAdapter(
         etag: fakeEtag(body.byteLength, etagCounter),
       },
     };
+  };
+
+  /**
+   * Multipart write path for the in-memory adapter. Drives the
+   * same four primitives as the S3 adapter and shares the
+   * create → loop → complete → compensate structure. The
+   * in-memory primitives never fail mid-flight for in-process
+   * callers (the only failure mode is a missing session, which
+   * can't happen if we always pass the uploadId we just got from
+   * create), so the compensation never fires in practice — but
+   * the structure is preserved so the adapter stays symmetric
+   * with the S3 path.
+   */
+  const writeMultipartMemory = async (
+    input: WriteInput,
+    body: Uint8Array,
+  ): Promise<Result<WriteOutput, FileSystemError>> => {
+    const totalSize = body.byteLength;
+    const chunkCount = Math.ceil(totalSize / MULTIPART_PART_SIZE);
+
+    let uploadId: string | undefined;
+    let completed = false;
+    try {
+      const create = await createMultipartUpload({
+        key: input.key,
+        contentType: input.contentType,
+        metadata: input.metadata,
+      });
+      if (!create.ok) return { ok: false, error: create.error };
+      uploadId = create.value.uploadId;
+
+      const parts: Array<{ partNumber: number; etag: string }> = [];
+      for (let i = 0; i < chunkCount; i++) {
+        const start = i * MULTIPART_PART_SIZE;
+        const end = Math.min(start + MULTIPART_PART_SIZE, totalSize);
+        const chunk = body.slice(start, end);
+        const up = await uploadPart({
+          key: input.key,
+          uploadId,
+          partNumber: i + 1,
+          body: chunk,
+        });
+        if (!up.ok) return { ok: false, error: up.error };
+        parts.push({ partNumber: i + 1, etag: up.value.etag });
+      }
+
+      const complete = await completeMultipartUpload({
+        key: input.key,
+        uploadId,
+        parts,
+      });
+      if (!complete.ok) return { ok: false, error: complete.error };
+      completed = true;
+      return {
+        ok: true,
+        value: { etag: complete.value.etag ?? fakeEtag(totalSize, ++etagCounter) },
+      };
+    } finally {
+      if (uploadId !== undefined && !completed) {
+        await abortMultipartUpload({ key: input.key, uploadId });
+      }
+    }
   };
 
   const del = async (input: DeleteInput): Promise<Result<DeleteOutput, FileSystemError>> => {
