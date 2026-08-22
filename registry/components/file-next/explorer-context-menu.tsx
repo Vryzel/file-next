@@ -28,6 +28,7 @@ import {
   ExternalLink,
   FolderInput,
   Pencil,
+  RotateCcw,
   Trash2,
 } from "lucide-react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
@@ -43,11 +44,13 @@ export interface ExplorerContextMenuActions {
   readonly moveFile: (input: { id: string; newParentId: string | null }) => Promise<unknown>;
   readonly copyFile: (input: { id: string; newParentId: string | null }) => Promise<unknown>;
   readonly renameFile: (id: string, newName: string) => Promise<void>;
+  readonly restoreNode?: (input: { id: string }) => Promise<unknown>;
 }
 
 export interface ExplorerContextMenuProps {
   /** The file/folder this menu operates on. */
   readonly file: FileNode;
+  readonly mode?: "browse" | "trash";
   /** Server-action callbacks. */
   readonly actions: ExplorerContextMenuActions;
   /** Optional: callback for "Open" (double-click on the file). */
@@ -76,6 +79,7 @@ export function ExplorerContextMenu(
 ): React.ReactElement {
   const {
     file,
+    mode = "browse",
     actions,
     onOpen,
     onOpenInNewTab,
@@ -117,7 +121,21 @@ export function ExplorerContextMenu(
         <ContextMenu.Content
           className="z-50 min-w-48 overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
         >
-          {onOpen ? (
+          {mode === "trash" ? (
+            <ContextMenu.Item
+              onSelect={() => {
+                void safeRun("Restore", () =>
+                  actions.restoreNode
+                    ? actions.restoreNode({ id: file.id })
+                    : Promise.resolve(),
+                );
+              }}
+              className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+            >
+              <RotateCcw aria-hidden="true" className="size-4" />
+              Restore
+            </ContextMenu.Item>
+          ) : onOpen ? (
             <ContextMenu.Item
               onSelect={() => onOpen(file)}
               className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
@@ -126,7 +144,7 @@ export function ExplorerContextMenu(
               Open
             </ContextMenu.Item>
           ) : null}
-          {onOpenInNewTab && file.kind === "file" ? (
+          {mode === "browse" && onOpenInNewTab && file.kind === "file" ? (
             <ContextMenu.Item
               onSelect={() => onOpenInNewTab(file)}
               className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
@@ -136,6 +154,8 @@ export function ExplorerContextMenu(
             </ContextMenu.Item>
           ) : null}
 
+          {mode === "browse" ? (
+            <>
           <ContextMenu.Item
             onSelect={(e) => {
               e.preventDefault();
@@ -179,6 +199,8 @@ export function ExplorerContextMenu(
             <Trash2 aria-hidden="true" className="size-4" />
             Delete
           </ContextMenu.Item>
+            </>
+          ) : null}
 
           {pendingError ? (
             <div className="mt-1 border-t border-border px-2 py-1.5 text-xs text-destructive">

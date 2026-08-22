@@ -32,6 +32,8 @@ import {
 import { useFileExplorer } from "@file-next/headless";
 import type {
   FileNode,
+  FileSystemError,
+  Result,
   TenantId,
 } from "file-next";
 import { Breadcrumbs } from "./breadcrumbs";
@@ -60,7 +62,12 @@ export interface FileExplorerActions {
   readonly moveFile: (input: { id: string; newParentId: string | null; newName?: string }) => Promise<unknown>;
   readonly copyFile: (input: { id: string; newParentId: string | null; newName?: string }) => Promise<unknown>;
   readonly renameFile: (id: string, newName: string) => Promise<void>;
+  readonly restoreNode?: (input: { id: string }) => Promise<unknown>;
 }
+
+type OverlayQuery = (
+  input: { query?: string },
+) => Promise<Result<{ items: ReadonlyArray<FileNode> }, FileSystemError>>;
 
 export interface FileExplorerProps {
   /** Tenant scope. */
@@ -91,6 +98,8 @@ export interface FileExplorerProps {
   /** Called when the user invokes "Open in new tab" on a file. */
   readonly onOpenInNewTab?: (file: FileNode) => Promise<void> | void;
   /** Called when files are dropped onto a folder. */
+  readonly searchFiles?: OverlayQuery;
+  readonly listTrash?: OverlayQuery;
   readonly onMove?: (input: {
     itemIds: ReadonlyArray<string>;
     destinationFolderId: string;
@@ -150,6 +159,8 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
     onActivate,
     onOpenFolder,
     onOpenInNewTab,
+    searchFiles,
+    listTrash,
     onMove = () => undefined,
     refreshKey,
     className,
@@ -170,6 +181,13 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
 
   // Local sort state — kept here, not in the hook, because it's
   // presentation-only.
+  const [query, setQuery] = useState("");
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [overlayFiles, setOverlayFiles] = useState<ReadonlyArray<FileNode> | null>(
+    null,
+  );
+  const [overlayError, setOverlayError] = useState<FileSystemError | null>(null);
+  const [overlayLoading, setOverlayLoading] = useState(false);
   const [sortKey, setSortKey] = useState<ExplorerColumn>("name");
   const [sortDir, setSortDir] = useState<SortDirection>("asc");
   const handleSortChange = useCallback(
@@ -184,10 +202,49 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
     [sortKey],
   );
 
+  const loadOverlay = useCallback(async () => {
+    if (trashOpen && listTrash) {
+      setOverlayLoading(true);
+      const result = await listTrash({});
+      setOverlayLoading(false);
+      if (result.ok) {
+        setOverlayFiles(result.value.items);
+        setOverlayError(null);
+      } else {
+        setOverlayError(result.error);
+      }
+      return;
+    }
+    const trimmed = query.trim();
+    if (trimmed && searchFiles) {
+      setOverlayLoading(true);
+      const result = await searchFiles({ query: trimmed });
+      setOverlayLoading(false);
+      if (result.ok) {
+        setOverlayFiles(result.value.items);
+        setOverlayError(null);
+      } else {
+        setOverlayError(result.error);
+      }
+      return;
+    }
+    setOverlayFiles(null);
+    setOverlayError(null);
+    setOverlayLoading(false);
+  }, [listTrash, query, searchFiles, trashOpen]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void loadOverlay();
+    }, trashOpen ? 0 : 250);
+    return () => window.clearTimeout(handle);
+  }, [loadOverlay, trashOpen]);
+
+  const sourceFiles = overlayFiles ?? explorer.files;
   const sortedFiles = useMemo(
     () =>
-      [...explorer.files].sort((a, b) => compareFiles(a, b, sortKey, sortDir)),
-    [explorer.files, sortKey, sortDir],
+      [...sourceFiles].sort((a, b) => compareFiles(a, b, sortKey, sortDir)),
+    [sourceFiles, sortKey, sortDir],
   );
 
   // External refresh trigger: when refreshKey changes, refetch.
@@ -257,35 +314,58 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
 
       {/* Toolbar */}
       <div
-        className="flex items-center justify-between"
+        className="flex items-center justify-between gap-3"
         onDragOver={(e) => {
-          // Allow drop on the wrapper (to drop into the current
-          // folder when the cursor isn't over a row). The views
-          // handle dropping on specific rows.
           if (explorer.draggingId) e.preventDefault();
         }}
         onDrop={onDropToCurrentFolder}
       >
         <span className="text-sm text-muted-foreground">
-          {explorer.files.length} item{explorer.files.length === 1 ? "" : "s"}
+          {sortedFiles.length} item{sortedFiles.length === 1 ? "" : "s"}
+          {trashOpen ? " in trash" : ""}
         </span>
         <ExplorerToolbar
           view={explorer.view}
           onViewChange={explorer.setView}
+          query={query}
+          onQueryChange={
+            searchFiles
+              ? (next) => {
+                  setTrashOpen(false);
+                  setQuery(next);
+                }
+              : undefined
+          }
+          trashOpen={trashOpen}
+          onTrashToggle={
+            listTrash
+              ? () => {
+                  setQuery("");
+                  setTrashOpen((open) => !open);
+                }
+              : undefined
+          }
         />
       </div>
 
       {/* Body */}
-      {explorer.status === "loading" && explorer.files.length === 0 ? (
+      {(overlayLoading || explorer.status === "loading") &&
+      sortedFiles.length === 0 ? (
         <p className="rounded-md border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
           Loading…
         </p>
-      ) : explorer.status === "error" && explorer.error ? (
-        <ErrorState error={explorer.error} />
-      ) : explorer.status === "success" && explorer.files.length === 0 ? (
+      ) : overlayError || (explorer.status === "error" && explorer.error) ? (
+        <ErrorState error={overlayError ?? explorer.error!} />
+      ) : explorer.status === "success" && sortedFiles.length === 0 ? (
         <EmptyState
-          title="Empty folder"
-          description="Drop files here or use the New Folder button to get started."
+          title={trashOpen ? "Trash is empty" : query.trim() ? "No matches" : "Empty folder"}
+          description={
+            trashOpen
+              ? "Deleted files will show up here."
+              : query.trim()
+                ? "Try another name."
+                : "Drop files here or use the New Folder button to get started."
+          }
         />
       ) : explorer.view === "list" ? (
         <ExplorerListView
@@ -328,7 +408,17 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
       {explorer.contextTarget ? (
         <ExplorerContextMenu
           file={explorer.contextTarget}
-          actions={actions}
+          mode={trashOpen ? "trash" : "browse"}
+          actions={{
+            ...actions,
+            restoreNode: actions.restoreNode
+              ? async (input) => {
+                  await actions.restoreNode?.(input);
+                  await loadOverlay();
+                  await explorer.refetch();
+                }
+              : undefined,
+          }}
           onOpen={handleActivate}
           onOpenInNewTab={
             onOpenInNewTab

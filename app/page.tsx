@@ -1,4 +1,4 @@
-import { getActions, DEMO_TENANT, DEMO_USER } from "./lib/file-next-store";
+import { getActions } from "./lib/file-next-store";
 import { CreateSampleFileButton } from "./CreateSampleFileButton";
 
 /**
@@ -15,7 +15,6 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const actions = getActions();
   const result = await actions.listFiles({
-    tenantId: DEMO_TENANT,
     parentId: null,
   });
 
@@ -24,9 +23,8 @@ export default async function HomePage() {
       <header className="space-y-2">
         <h1 className="text-4xl font-bold tracking-tight">file-next</h1>
         <p className="text-muted-foreground">
-          v0.2 demo — running entirely on the in-memory adapter. Refresh to
-          re-fetch. (Nothing persists across server restarts; for real S3
-          + Postgres, see <code>docs/provider-setup.md</code>.)
+          v0.2 demo — metadata in SQLite, bytes in the memory adapter.
+          Search, trash, and folders live in the registry explorer.
         </p>
       </header>
 
