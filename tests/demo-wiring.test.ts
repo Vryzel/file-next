@@ -45,7 +45,6 @@ describe("demo file-next wiring", () => {
   it("starts with an empty file list", async () => {
     const actions = getActions();
     const res = await actions.listFiles({
-      tenantId: DEMO_TENANT,
       parentId: null,
     });
     expect(res.ok).toBe(true);
@@ -56,7 +55,6 @@ describe("demo file-next wiring", () => {
   it("listFiles returns Result<FileSystemError, ...> with the correct shape", async () => {
     const actions = getActions();
     const res = await actions.listFiles({
-      tenantId: DEMO_TENANT,
       parentId: null,
     });
     // Discriminated union — narrow with `if (!res.ok) return;`.

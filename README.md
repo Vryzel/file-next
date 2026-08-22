@@ -26,7 +26,7 @@ export AWS_SECRET_ACCESS_KEY=...
 # 3. Wire it up in Next.js (server action)
 "use server";
 import { createServerActions } from "file-next/server";
-const actions = createServerActions({ store, writeThrough });
+const actions = createServerActions({ store, writeThrough, fs, getAuth });
 export const listFiles = actions.listFiles;
 
 # 4. Add the registry components

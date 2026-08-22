@@ -139,11 +139,12 @@ describe("T-010: createFileSystem", () => {
     });
   });
 
-  describe("forTenant (PR 2a no-op)", () => {
-    it("forTenant returns another FileSystem (shape only, no namespace logic yet)", () => {
+  describe("forTenant + store", () => {
+    it("forTenant returns another FileSystem with the tenant id", () => {
       const fs = createFileSystem(validS3);
       const child = fs.forTenant("tenant-1");
       expectTypeOf(child).toMatchTypeOf<FileSystem>();
+      expect(child.tenantId).toBe("tenant-1");
     });
   });
 });

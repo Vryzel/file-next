@@ -227,7 +227,7 @@ describe("createSqliteStore — listChildren", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.items).toHaveLength(2);
-    expect(r.value.nextCursor).toBe("2");
+    expect(r.value.nextCursor).toBeDefined();
   });
 
   it("does not return nextCursor when result fits in limit", async () => {

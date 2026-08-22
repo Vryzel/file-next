@@ -86,6 +86,7 @@ import {
 import { FileSystemError } from "@/errors";
 import { asS3Key, asTenantId, asUserId } from "@/types/branded";
 import { sanitizeFts5Query } from "./sanitize";
+import { decodeCursor, pageCursor } from "./cursor";
 import type {
   CreateNodeInput,
   DeleteNodeInput,
@@ -219,6 +220,14 @@ CREATE TABLE IF NOT EXISTS pending_orphans (
 CREATE INDEX IF NOT EXISTS pending_orphans_tenant_created
   ON pending_orphans(tenant_id, created_at);
 
+CREATE TABLE IF NOT EXISTS shares (
+  token      TEXT PRIMARY KEY,
+  tenant_id  TEXT NOT NULL,
+  node_id    TEXT NOT NULL,
+  expires_at TEXT,
+  created_at TEXT NOT NULL
+);
+
 -- Name uniqueness for LIVE rows only. NULL deleted_at lets two
 -- deleted rows share a name; a new live row then claims the slot.
 CREATE UNIQUE INDEX IF NOT EXISTS nodes_unique_live_name
@@ -328,6 +337,14 @@ export const createSqliteStore = (
     enqueueOrphan: wrap((s, i) => s.enqueueOrphan(i)),
     listPendingOrphans: wrap((s, i) => s.listPendingOrphans(i)),
     deleteOrphan: wrap((s, i) => s.deleteOrphan(i)),
+    restoreNode: wrap((s, i) => s.restoreNode(i)),
+    listTrash: wrap((s, i) => s.listTrash(i)),
+    scanFileKeys: wrap((s, i) => s.scanFileKeys(i)),
+    sumSize: wrap((s, i) => s.sumSize(i)),
+    findByS3Key: wrap((s, i) => s.findByS3Key(i)),
+    createShare: wrap((s, i) => s.createShare(i)),
+    resolveShare: wrap((s, i) => s.resolveShare(i)),
+    revokeShare: wrap((s, i) => s.revokeShare(i)),
   };
 };
 
@@ -521,7 +538,7 @@ const buildInner = (
       input: CreateNodeInput,
     ): Promise<Result<FileNode, FileSystemError>> {
       const now = nowIso();
-      const id = makeId();
+      const id = input.id ?? makeId();
 
       // Look up parent (if any) to compute the path. We require
       // a LIVE parent; tombstoned parents can't have new children.
@@ -610,18 +627,26 @@ const buildInner = (
     ): Promise<Result<ListChildrenOutput, FileSystemError>> {
       const limit = input.limit ?? 1000;
       const parentId = dbParent(input.parentId);
-      const rows = stmtListChildren.all(
-        input.tenantId,
-        parentId,
-        limit,
+      const cursor = decodeCursor(input.cursor);
+      const rows = (
+        cursor
+          ? db
+              .prepare(
+                `SELECT * FROM nodes
+                 WHERE tenant_id = ? AND parent_id = ?
+                   AND deleted_at IS NULL
+                   AND (name COLLATE NOCASE > ? COLLATE NOCASE
+                        OR (name COLLATE NOCASE = ? COLLATE NOCASE AND id > ?))
+                 ORDER BY name COLLATE NOCASE ASC, id ASC
+                 LIMIT ?`,
+              )
+              .all(input.tenantId, parentId, cursor.n, cursor.n, cursor.i, limit)
+          : stmtListChildren.all(input.tenantId, parentId, limit)
       ) as ReadonlyArray<NodeRow>;
-      const total = (stmtCountChildren.get(
-        input.tenantId,
-        parentId,
-      ) as { c: number }).c;
+      const items = rows.map(rowToFileNode);
       return ok({
-        items: rows.map(rowToFileNode),
-        nextCursor: total > limit ? String(limit) : undefined,
+        items,
+        nextCursor: pageCursor(items, limit),
       });
     },
 
@@ -914,8 +939,6 @@ const buildInner = (
     },
 
     async reconcile(): Promise<Result<ReconcileResult, FileSystemError>> {
-      // No-op: needs the S3 adapter to walk the bucket, which
-      // would change the MetadataStore interface. Tracked for v0.3.
       const row = db
         .prepare("SELECT COUNT(*) AS c FROM nodes WHERE deleted_at IS NULL")
         .get() as { c: number };
@@ -924,6 +947,134 @@ const buildInner = (
         orphansInS3: [],
         scanned: row.c,
       });
+    },
+
+    async restoreNode(input) {
+      const row = stmtGetByIdAny.get(input.id, input.tenantId) as NodeRow | undefined;
+      if (!row || row.deleted_at === null) return notFound(input.id);
+      try {
+        db.prepare(
+          `UPDATE nodes SET deleted_at = NULL, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+        ).run(nowIso(), input.id, input.tenantId);
+      } catch (e) {
+        if (e instanceof Error && /UNIQUE constraint failed/.test(e.message)) {
+          return err(
+            new FileSystemError({
+              code: "Conflict",
+              message: `A live node named '${row.name}' already exists in this folder`,
+              retryable: false,
+            }),
+          );
+        }
+        return err(FileSystemError.fromSqlite(e));
+      }
+      const restored = stmtGetById.get(input.id, input.tenantId) as NodeRow | undefined;
+      if (!restored) return notFound(input.id);
+      return ok(rowToFileNode(restored));
+    },
+
+    async listTrash(input) {
+      const limit = input.limit ?? 1000;
+      const cursor = decodeCursor(input.cursor);
+      const rows = (
+        cursor
+          ? db
+              .prepare(
+                `SELECT * FROM nodes
+                 WHERE tenant_id = ? AND deleted_at IS NOT NULL
+                   AND (name COLLATE NOCASE > ? COLLATE NOCASE
+                        OR (name COLLATE NOCASE = ? COLLATE NOCASE AND id > ?))
+                 ORDER BY name COLLATE NOCASE ASC, id ASC
+                 LIMIT ?`,
+              )
+              .all(input.tenantId, cursor.n, cursor.n, cursor.i, limit)
+          : db
+              .prepare(
+                `SELECT * FROM nodes
+                 WHERE tenant_id = ? AND deleted_at IS NOT NULL
+                 ORDER BY name COLLATE NOCASE ASC, id ASC
+                 LIMIT ?`,
+              )
+              .all(input.tenantId, limit)
+      ) as ReadonlyArray<NodeRow>;
+      const items = rows.map(rowToFileNode);
+      return ok({ items, nextCursor: pageCursor(items, limit) });
+    },
+
+    async scanFileKeys(input) {
+      const rows = db
+        .prepare(
+          `SELECT id, s3_key FROM nodes
+           WHERE tenant_id = ? AND deleted_at IS NULL AND kind = 'file' AND s3_key != ''`,
+        )
+        .all(input.tenantId) as Array<{ id: string; s3_key: string }>;
+      return ok(rows.map((r) => ({ id: r.id, s3Key: r.s3_key })));
+    },
+
+    async sumSize(input) {
+      const row = db
+        .prepare(
+          `SELECT COALESCE(SUM(size), 0) AS c FROM nodes
+           WHERE tenant_id = ? AND deleted_at IS NULL AND kind = 'file'`,
+        )
+        .get(input.tenantId) as { c: number };
+      return ok(row.c);
+    },
+
+    async findByS3Key(input) {
+      const row = db
+        .prepare(
+          `SELECT * FROM nodes
+           WHERE tenant_id = ? AND s3_key = ? AND deleted_at IS NULL
+           LIMIT 1`,
+        )
+        .get(input.tenantId, input.s3Key) as NodeRow | undefined;
+      return ok(row ? rowToFileNode(row) : null);
+    },
+
+    async createShare(input) {
+      const node = stmtGetById.get(input.nodeId, input.tenantId) as NodeRow | undefined;
+      if (!node) return notFound(input.nodeId);
+      const token = makeId();
+      db.prepare(
+        `INSERT INTO shares (token, tenant_id, node_id, expires_at, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      ).run(
+        token,
+        input.tenantId,
+        input.nodeId,
+        input.expiresAt?.toISOString() ?? null,
+        nowIso(),
+      );
+      return ok({ token });
+    },
+
+    async resolveShare(input) {
+      const share = db
+        .prepare(`SELECT * FROM shares WHERE token = ?`)
+        .get(input.token) as
+        | { tenant_id: string; node_id: string; expires_at: string | null }
+        | undefined;
+      if (!share) return ok(null);
+      if (share.expires_at && Date.parse(share.expires_at) < Date.now()) return ok(null);
+      const node = stmtGetById.get(share.node_id, share.tenant_id) as NodeRow | undefined;
+      return ok(node ? rowToFileNode(node) : null);
+    },
+
+    async revokeShare(input) {
+      const result = db
+        .prepare(`DELETE FROM shares WHERE token = ? AND tenant_id = ?`)
+        .run(input.token, input.tenantId);
+      if (result.changes === 0) {
+        return err(
+          new FileSystemError({
+            code: "NotFound",
+            message: `Share ${input.token} not found`,
+            retryable: false,
+          }),
+        );
+      }
+      return ok(undefined);
     },
   };
 };

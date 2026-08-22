@@ -77,6 +77,7 @@ import {
 import { FileSystemError } from "@/errors";
 import { asS3Key, asTenantId, asUserId } from "@/types/branded";
 import { sanitizeLikePattern } from "./sanitize";
+import { decodeCursor, pageCursor } from "./cursor";
 import type {
   CreateNodeInput,
   DeleteNodeInput,
@@ -254,6 +255,28 @@ CREATE INDEX IF NOT EXISTS nodes_name_lower
 -- real win past a few thousand rows.
 CREATE INDEX IF NOT EXISTS nodes_name_trgm_idx
   ON "${schema}".nodes USING GIN (lower(name) gin_trgm_ops);
+
+CREATE TABLE IF NOT EXISTS "${schema}".shares (
+  token      TEXT PRIMARY KEY,
+  tenant_id  TEXT NOT NULL,
+  node_id    UUID NOT NULL,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE "${schema}".nodes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "${schema}".nodes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "${schema}".nodes;
+CREATE POLICY tenant_isolation ON "${schema}".nodes
+  USING (tenant_id = current_setting('app.current_tenant', true))
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true));
+
+ALTER TABLE "${schema}".pending_orphans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "${schema}".pending_orphans FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS orphan_tenant_isolation ON "${schema}".pending_orphans;
+CREATE POLICY orphan_tenant_isolation ON "${schema}".pending_orphans
+  USING (tenant_id = current_setting('app.current_tenant', true))
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true));
 `;
 
 const runMigrations = async (
@@ -319,6 +342,14 @@ export const createPostgresStore = (
     enqueueOrphan: wrap((s, i) => s.enqueueOrphan(i)),
     listPendingOrphans: wrap((s, i) => s.listPendingOrphans(i)),
     deleteOrphan: wrap((s, i) => s.deleteOrphan(i)),
+    restoreNode: wrap((s, i) => s.restoreNode(i)),
+    listTrash: wrap((s, i) => s.listTrash(i)),
+    scanFileKeys: wrap((s, i) => s.scanFileKeys(i)),
+    sumSize: wrap((s, i) => s.sumSize(i)),
+    findByS3Key: wrap((s, i) => s.findByS3Key(i)),
+    createShare: wrap((s, i) => s.createShare(i)),
+    resolveShare: wrap((s, i) => s.resolveShare(i)),
+    revokeShare: wrap((s, i) => s.revokeShare(i)),
   };
 };
 
@@ -374,10 +405,16 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
 
   // Wrap a query in a transaction. Caller provides the work as an
   // async function; on success the tx commits, on throw it rolls back.
-  const withTx = async <T>(fn: (c: PoolClient) => Promise<T>): Promise<T> => {
+  const withTenant = async <T>(
+    tenantId: string,
+    fn: (c: PoolClient) => Promise<T>,
+  ): Promise<T> => {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [
+        tenantId,
+      ]);
       const result = await fn(client);
       await client.query("COMMIT");
       return result;
@@ -390,6 +427,17 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       client.release();
     }
   };
+
+  const q = <T extends QueryResultRow>(
+    tenantId: string,
+    text: string,
+    params: unknown[] = [],
+  ) => withTenant(tenantId, (c) => c.query<T>(text, params));
+
+  const withTx = async <T>(
+    tenantId: string,
+    fn: (c: PoolClient) => Promise<T>,
+  ): Promise<T> => withTenant(tenantId, fn);
 
   // -------------------------------------------------------------------------
   // 9-method contract
@@ -405,7 +453,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       // `!= null` so BOTH null and undefined skip the lookup.
       let parentPath: string | null = null;
       if (input.parentId != null) {
-        const parentRes = await pool.query<NodeRow>(
+        const parentRes = await q<NodeRow>(input.tenantId,
           `SELECT * FROM "${schema}".nodes
            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
           [input.parentId, input.tenantId],
@@ -424,11 +472,11 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
         parentPath = parent.path;
       }
 
-      const id = makeId();
+      const id = input.id ?? makeId();
       const path = parentPath === null ? `/${input.name}` : `${parentPath}/${input.name}`;
 
       try {
-        await pool.query(
+        await q(input.tenantId,
           `INSERT INTO "${schema}".nodes (
             id, tenant_id, parent_id, name, path, kind, size, mime_type,
             s3_key, owner_id, metadata
@@ -466,7 +514,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
         );
       }
 
-      const created = await pool.query<NodeRow>(
+      const created = await q<NodeRow>(input.tenantId,
         `SELECT * FROM "${schema}".nodes WHERE id = $1 AND tenant_id = $2`,
         [id, input.tenantId],
       );
@@ -486,7 +534,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       input: GetNodeInput,
     ): Promise<Result<FileNode | null, FileSystemError>> {
       await ensureInitialized();
-      const res = await pool.query<NodeRow>(
+      const res = await q<NodeRow>(input.tenantId,
         `SELECT * FROM "${schema}".nodes
          WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
         [input.id, input.tenantId],
@@ -499,17 +547,31 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
     ): Promise<Result<ListChildrenOutput, FileSystemError>> {
       await ensureInitialized();
       const limit = input.limit ?? 1000;
-      const res = await pool.query<NodeRow>(
-        `SELECT * FROM "${schema}".nodes
-         WHERE tenant_id = $1 AND parent_id IS NOT DISTINCT FROM $2
-           AND deleted_at IS NULL
-         ORDER BY lower(name) ASC
-         LIMIT $3`,
-        [input.tenantId, input.parentId, limit],
-      );
+      const cursor = decodeCursor(input.cursor);
+      const res = cursor
+        ? await q<NodeRow>(
+            input.tenantId,
+            `SELECT * FROM "${schema}".nodes
+             WHERE tenant_id = $1 AND parent_id IS NOT DISTINCT FROM $2
+               AND deleted_at IS NULL
+               AND (lower(name) > lower($3) OR (lower(name) = lower($3) AND id::text > $4))
+             ORDER BY lower(name) ASC, id ASC
+             LIMIT $5`,
+            [input.tenantId, input.parentId, cursor.n, cursor.i, limit],
+          )
+        : await q<NodeRow>(
+            input.tenantId,
+            `SELECT * FROM "${schema}".nodes
+             WHERE tenant_id = $1 AND parent_id IS NOT DISTINCT FROM $2
+               AND deleted_at IS NULL
+             ORDER BY lower(name) ASC, id ASC
+             LIMIT $3`,
+            [input.tenantId, input.parentId, limit],
+          );
+      const items = res.rows.map(rowToFileNode);
       return ok({
-        items: res.rows.map(rowToFileNode),
-        nextCursor: res.rows.length === limit ? String(limit) : undefined,
+        items,
+        nextCursor: pageCursor(items, limit),
       });
     },
 
@@ -517,7 +579,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       input: MoveNodeInput,
     ): Promise<Result<FileNode, FileSystemError>> {
       await ensureInitialized();
-      const currentRes = await pool.query<NodeRow>(
+      const currentRes = await q<NodeRow>(input.tenantId,
         `SELECT * FROM "${schema}".nodes
          WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
         [input.id, input.tenantId],
@@ -540,7 +602,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
             }),
           );
         }
-        const newParentRes = await pool.query<NodeRow>(
+        const newParentRes = await q<NodeRow>(input.tenantId,
           `SELECT * FROM "${schema}".nodes
            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
           [input.newParentId, input.tenantId],
@@ -576,7 +638,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
         newParentPath === null ? `/${newName}` : `${newParentPath}/${newName}`;
 
       try {
-        await withTx(async (client) => {
+        await withTx(input.tenantId, async (client) => {
           await client.query(
             `UPDATE "${schema}".nodes
              SET parent_id = $1, name = $2, path = $3, updated_at = now()
@@ -617,7 +679,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
         );
       }
 
-      const updated = await pool.query<NodeRow>(
+      const updated = await q<NodeRow>(input.tenantId,
         `SELECT * FROM "${schema}".nodes
          WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
         [input.id, input.tenantId],
@@ -638,7 +700,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       input: DeleteNodeInput,
     ): Promise<Result<void, FileSystemError>> {
       await ensureInitialized();
-      const nodeRes = await pool.query<NodeRow>(
+      const nodeRes = await q<NodeRow>(input.tenantId,
         `SELECT * FROM "${schema}".nodes
          WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
         [input.id, input.tenantId],
@@ -647,7 +709,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       if (!node) return notFound(input.id);
 
       if (node.kind === "folder" && !input.recursive) {
-        const childRes = await pool.query(
+        const childRes = await q(input.tenantId,
           `SELECT 1 FROM "${schema}".nodes
            WHERE tenant_id = $1 AND parent_id = $2 AND deleted_at IS NULL
            LIMIT 1`,
@@ -665,7 +727,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       }
 
       if (input.recursive || node.kind === "file") {
-        await pool.query(
+        await q(input.tenantId,
           `UPDATE "${schema}".nodes
            SET deleted_at = now(), updated_at = now()
            WHERE (id = $1 OR path LIKE $2 || '/%')
@@ -673,7 +735,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
           [input.id, node.path],
         );
       } else {
-        await pool.query(
+        await q(input.tenantId,
           `UPDATE "${schema}".nodes
            SET deleted_at = now(), updated_at = now()
            WHERE id = $1`,
@@ -687,7 +749,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       input: UpdateMetadataInput,
     ): Promise<Result<FileNode, FileSystemError>> {
       await ensureInitialized();
-      const exists = await pool.query(
+      const exists = await q(input.tenantId,
         `SELECT 1 FROM "${schema}".nodes
          WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
         [input.id, input.tenantId],
@@ -703,13 +765,13 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
         : `UPDATE "${schema}".nodes
            SET metadata = metadata || $1::jsonb, updated_at = now()
            WHERE id = $2 AND tenant_id = $3`;
-      await pool.query(sql, [
+      await q(input.tenantId, sql, [
         JSON.stringify(input.metadata),
         input.id,
         input.tenantId,
       ]);
 
-      const updated = await pool.query<NodeRow>(
+      const updated = await q<NodeRow>(input.tenantId,
         `SELECT * FROM "${schema}".nodes WHERE id = $1 AND tenant_id = $2`,
         [input.id, input.tenantId],
       );
@@ -734,7 +796,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       let res;
       if (input.parentId === undefined) {
         // No scope: search the whole tenant.
-        res = await pool.query<NodeRow>(
+        res = await q<NodeRow>(input.tenantId,
           `SELECT * FROM "${schema}".nodes
            WHERE tenant_id = $1 AND deleted_at IS NULL
              AND name ILIKE $2 ESCAPE '\\'
@@ -743,7 +805,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
           [input.tenantId, pattern, limit],
         );
       } else {
-        const parentRes = await pool.query<NodeRow>(
+        const parentRes = await q<NodeRow>(input.tenantId,
           `SELECT * FROM "${schema}".nodes
            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
           [input.parentId, input.tenantId],
@@ -752,7 +814,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
         if (!parent) return notFound(input.parentId);
         // Root's subtree is the whole tenant — use the unscoped query.
         if (parent.path === "/") {
-          res = await pool.query<NodeRow>(
+          res = await q<NodeRow>(input.tenantId,
             `SELECT * FROM "${schema}".nodes
              WHERE tenant_id = $1 AND deleted_at IS NULL
                AND name ILIKE $2 ESCAPE '\\'
@@ -761,7 +823,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
             [input.tenantId, pattern, limit],
           );
         } else {
-          res = await pool.query<NodeRow>(
+          res = await q<NodeRow>(input.tenantId,
             `SELECT * FROM "${schema}".nodes
              WHERE tenant_id = $1 AND deleted_at IS NULL
                AND (id = $2 OR path LIKE $3 || '/%')
@@ -785,7 +847,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       // Recursive CTE walks up the parent chain in one query.
       // Includes tombstoned ancestors to match the memory/SQLite
       // behavior (no gaps even if a mid-chain parent is deleted).
-      const res = await pool.query<NodeRow>(
+      const res = await q<NodeRow>(input.tenantId,
         `WITH RECURSIVE chain AS (
            SELECT * FROM "${schema}".nodes
             WHERE id = $1 AND tenant_id = $2
@@ -805,7 +867,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       await ensureInitialized();
       const id = makeId();
       try {
-        await pool.query(
+        await q(input.tenantId,
           `INSERT INTO "${schema}".pending_orphans (
              id, tenant_id, s3_key, metadata_id, reason
            ) VALUES ($1, $2, $3, $4, $5)`,
@@ -826,7 +888,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
     async listPendingOrphans(input) {
       await ensureInitialized();
       try {
-        const result = await pool.query<OrphanRow>(
+        const result = await q<OrphanRow>(input.tenantId,
           `SELECT * FROM "${schema}".pending_orphans
            WHERE tenant_id = $1
            ORDER BY created_at ASC, id ASC`,
@@ -841,7 +903,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
     async deleteOrphan(input) {
       await ensureInitialized();
       try {
-        const result = await pool.query(
+        const result = await q(input.tenantId,
           `DELETE FROM "${schema}".pending_orphans
            WHERE tenant_id = $1 AND id = $2`,
           [input.tenantId, input.id],
@@ -863,17 +925,153 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
 
     async reconcile(): Promise<Result<ReconcileResult, FileSystemError>> {
       await ensureInitialized();
-      // No-op: real bucket-walking reconcile needs the S3
-      // adapter injected, which would change the MetadataStore
-      // interface. Deferred to a follow-up.
-      const res = await pool.query<{ c: string }>(
-        `SELECT count(*)::text AS c FROM "${schema}".nodes WHERE deleted_at IS NULL`,
+      return ok({ orphansInStore: [], orphansInS3: [], scanned: 0 });
+    },
+
+    async restoreNode(input) {
+      await ensureInitialized();
+      try {
+        const res = await q<NodeRow>(
+          input.tenantId,
+          `UPDATE "${schema}".nodes
+           SET deleted_at = NULL, updated_at = now()
+           WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NOT NULL
+           RETURNING *`,
+          [input.id, input.tenantId],
+        );
+        if (!res.rows[0]) return notFound(input.id);
+        return ok(rowToFileNode(res.rows[0]));
+      } catch (e) {
+        if (e instanceof Error && /nodes_unique_live/.test(e.message)) {
+          return err(
+            new FileSystemError({
+              code: "Conflict",
+              message: "A live node with this name already exists in the folder",
+              retryable: false,
+            }),
+          );
+        }
+        return err(FileSystemError.fromPg(e));
+      }
+    },
+
+    async listTrash(input) {
+      await ensureInitialized();
+      const limit = input.limit ?? 1000;
+      const cursor = decodeCursor(input.cursor);
+      const res = cursor
+        ? await q<NodeRow>(
+            input.tenantId,
+            `SELECT * FROM "${schema}".nodes
+             WHERE tenant_id = $1 AND deleted_at IS NOT NULL
+               AND (lower(name) > lower($2) OR (lower(name) = lower($2) AND id::text > $3))
+             ORDER BY lower(name) ASC, id ASC
+             LIMIT $4`,
+            [input.tenantId, cursor.n, cursor.i, limit],
+          )
+        : await q<NodeRow>(
+            input.tenantId,
+            `SELECT * FROM "${schema}".nodes
+             WHERE tenant_id = $1 AND deleted_at IS NOT NULL
+             ORDER BY lower(name) ASC, id ASC
+             LIMIT $2`,
+            [input.tenantId, limit],
+          );
+      const items = res.rows.map(rowToFileNode);
+      return ok({ items, nextCursor: pageCursor(items, limit) });
+    },
+
+    async scanFileKeys(input) {
+      await ensureInitialized();
+      const res = await q<{ id: string; s3_key: string }>(
+        input.tenantId,
+        `SELECT id, s3_key FROM "${schema}".nodes
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' AND s3_key <> ''`,
+        [input.tenantId],
       );
-      return ok({
-        orphansInStore: [],
-        orphansInS3: [],
-        scanned: Number.parseInt(res.rows[0]?.c ?? "0", 10),
-      });
+      return ok(res.rows.map((r) => ({ id: r.id, s3Key: r.s3_key })));
+    },
+
+    async sumSize(input) {
+      await ensureInitialized();
+      const res = await q<{ c: string }>(
+        input.tenantId,
+        `SELECT COALESCE(SUM(size), 0)::text AS c FROM "${schema}".nodes
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file'`,
+        [input.tenantId],
+      );
+      return ok(Number.parseInt(res.rows[0]?.c ?? "0", 10));
+    },
+
+    async findByS3Key(input) {
+      await ensureInitialized();
+      const res = await q<NodeRow>(
+        input.tenantId,
+        `SELECT * FROM "${schema}".nodes
+         WHERE tenant_id = $1 AND s3_key = $2 AND deleted_at IS NULL
+         LIMIT 1`,
+        [input.tenantId, input.s3Key],
+      );
+      return ok(res.rows[0] ? rowToFileNode(res.rows[0]) : null);
+    },
+
+    async createShare(input) {
+      await ensureInitialized();
+      const node = await q<NodeRow>(
+        input.tenantId,
+        `SELECT * FROM "${schema}".nodes
+         WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+        [input.nodeId, input.tenantId],
+      );
+      if (!node.rows[0]) return notFound(input.nodeId);
+      const token = makeId();
+      await q(
+        input.tenantId,
+        `INSERT INTO "${schema}".shares (token, tenant_id, node_id, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [token, input.tenantId, input.nodeId, input.expiresAt ?? null],
+      );
+      return ok({ token });
+    },
+
+    async resolveShare(input) {
+      await ensureInitialized();
+      const share = await pool.query<{
+        tenant_id: string;
+        node_id: string;
+        expires_at: Date | null;
+      }>(
+        `SELECT tenant_id, node_id, expires_at FROM "${schema}".shares WHERE token = $1`,
+        [input.token],
+      );
+      const row = share.rows[0];
+      if (!row) return ok(null);
+      if (row.expires_at && row.expires_at.getTime() < Date.now()) return ok(null);
+      const node = await q<NodeRow>(
+        row.tenant_id,
+        `SELECT * FROM "${schema}".nodes
+         WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+        [row.node_id, row.tenant_id],
+      );
+      return ok(node.rows[0] ? rowToFileNode(node.rows[0]) : null);
+    },
+
+    async revokeShare(input) {
+      await ensureInitialized();
+      const result = await pool.query(
+        `DELETE FROM "${schema}".shares WHERE token = $1 AND tenant_id = $2`,
+        [input.token, input.tenantId],
+      );
+      if (result.rowCount === 0) {
+        return err(
+          new FileSystemError({
+            code: "NotFound",
+            message: `Share ${input.token} not found`,
+            retryable: false,
+          }),
+        );
+      }
+      return ok(undefined);
     },
   };
 };

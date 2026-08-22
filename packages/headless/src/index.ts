@@ -37,6 +37,7 @@ export { useUploader } from "./use-uploader";
 export type {
   UploaderFile,
   ConfirmUploadFn,
+  RequestUploadResult,
   UseUploaderOptions,
   UseUploaderReturn,
   UseUploaderState,

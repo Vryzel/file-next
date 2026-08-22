@@ -34,9 +34,9 @@ import type {
   FileNode,
   TenantId,
 } from "file-next";
-import { Breadcrumbs } from "@file-next/registry/components/file-next/breadcrumbs";
-import { EmptyState } from "@file-next/registry/components/file-next/empty-state";
-import { ErrorState } from "@file-next/registry/components/file-next/error-state";
+import { Breadcrumbs } from "./breadcrumbs";
+import { EmptyState } from "./empty-state";
+import { ErrorState } from "./error-state";
 import { cn } from "@/lib/cn";
 import { ExplorerListView, EXPLORER_DRAG_MIME } from "./explorer-list-view";
 import { ExplorerGridView } from "./explorer-grid-view";

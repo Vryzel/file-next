@@ -133,7 +133,9 @@ describe("PR 6: writeThroughFile — compensation", () => {
     expect(orphans.ok).toBe(true);
     if (!orphans.ok) return;
     expect(orphans.value).toHaveLength(1);
-    expect(orphans.value[0]?.s3Key).toBe("dupe.txt");
+    expect(orphans.value[0]?.s3Key).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
   });
 });
 
@@ -181,8 +183,7 @@ describe("PR 6: deleteThroughFile — compensation", () => {
 });
 
 describe("v0.2: per-tenant boot drain", () => {
-  it("first call for a tenant triggers listPendingOrphans + console.warn per orphan", async () => {
-    // Seed two orphans for tenant A.
+  it("first call for a tenant drains pending orphans", async () => {
     await store.enqueueOrphan({
       tenantId: TENANT_A,
       s3Key: asS3Key("uploads/a.txt"),
@@ -195,8 +196,8 @@ describe("v0.2: per-tenant boot drain", () => {
     });
 
     const listSpy = vi.spyOn(store, "listPendingOrphans");
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     s3Mock.on(PutObjectCommand).resolves({});
+    s3Mock.on(DeleteObjectCommand).resolves({});
 
     await wt.writeThroughFile({
       tenantId: TENANT_A,
@@ -207,16 +208,10 @@ describe("v0.2: per-tenant boot drain", () => {
       ownerId: USER,
     });
 
-    // Drain ran exactly once for tenant A.
     expect(listSpy).toHaveBeenCalledTimes(1);
     expect(listSpy).toHaveBeenCalledWith({ tenantId: TENANT_A });
-    // Two warnings, one per seeded orphan.
-    expect(warnSpy).toHaveBeenCalledTimes(2);
-    expect(warnSpy.mock.calls[0]?.[0]).toContain("pending orphan");
-    expect(warnSpy.mock.calls[0]?.[0]).toContain("uploads/a.txt");
-    expect(warnSpy.mock.calls[1]?.[0]).toContain("uploads/b.txt");
-
-    warnSpy.mockRestore();
+    const leftovers = await store.listPendingOrphans({ tenantId: TENANT_A });
+    expect(leftovers.ok && leftovers.value).toHaveLength(0);
     listSpy.mockRestore();
   });
 
@@ -258,8 +253,8 @@ describe("v0.2: per-tenant boot drain", () => {
     });
 
     const listSpy = vi.spyOn(store, "listPendingOrphans");
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     s3Mock.on(PutObjectCommand).resolves({});
+    s3Mock.on(DeleteObjectCommand).resolves({});
 
     await wt.writeThroughFile({
       tenantId: TENANT_A,
@@ -278,13 +273,8 @@ describe("v0.2: per-tenant boot drain", () => {
       ownerId: USER,
     });
 
-    // Two drains — one per tenant.
     const tenants = listSpy.mock.calls.map(([arg]) => (arg as { tenantId: string }).tenantId);
     expect(tenants).toEqual([TENANT_A, TENANT_B]);
-    // Two warnings total — one per tenant's seeded orphan.
-    expect(warnSpy).toHaveBeenCalledTimes(2);
-
-    warnSpy.mockRestore();
     listSpy.mockRestore();
   });
 

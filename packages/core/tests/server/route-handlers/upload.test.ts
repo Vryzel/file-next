@@ -123,7 +123,8 @@ describe("T-049: createUploadRouteHandler — request-time validation", () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.value.url).toMatch(/X-Amz-Expires=900/);
-    expect(body.value.key).toBe("uploads/x.txt");
+    expect(body.value.key).toEqual(expect.any(String));
+    expect(body.value.id).toBe(body.value.key);
     // expiresAt is roughly now + 900s (default)
     const expiresAt = new Date(body.value.expiresAt).getTime();
     expect(Math.abs(expiresAt - (before + 900 * 1000))).toBeLessThan(5000);
@@ -140,7 +141,7 @@ describe("T-049: createUploadRouteHandler — request-time validation", () => {
     // The second arg is a PutObjectCommand instance
     expect((cmdArg as { constructor: { name: string } }).constructor.name).toBe("PutObjectCommand");
     expect((cmdArg as { input: { Bucket: string; Key: string; ContentType: string } }).input.Bucket).toBe("test-bucket");
-    expect((cmdArg as { input: { Bucket: string; Key: string; ContentType: string } }).input.Key).toBe("uploads/photo.jpg");
+    expect((cmdArg as { input: { Bucket: string; Key: string; ContentType: string } }).input.Key).toEqual(expect.any(String));
     expect((cmdArg as { input: { Bucket: string; Key: string; ContentType: string } }).input.ContentType).toBe("image/jpeg");
     expect((optsArg as { expiresIn: number }).expiresIn).toBe(600);
   });

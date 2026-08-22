@@ -25,7 +25,9 @@
  * the first user request.
  */
 import { FileSystemError } from "@/errors";
+import { asS3Key } from "@/types/branded";
 import type { FileSystem } from "@/storage/filesystem";
+import type { AuthContext } from "../../auth/with-auth";
 
 /** S3 SigV4 presign hard cap. The SDK itself rejects anything longer. */
 const MAX_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
@@ -48,6 +50,8 @@ const matchesContentType = (pattern: string, actual: string): boolean => {
 
 export interface CreateUploadRouteHandlerOptions {
   readonly fs: FileSystem;
+  /** Resolve the caller. 401 when it returns null. */
+  readonly getAuth?: (req: Request) => Promise<AuthContext | null>;
   /** Reject requests whose `contentLength` exceeds this. Omit for no cap. */
   readonly maxBytes?: number;
   /**
@@ -142,9 +146,24 @@ export const createUploadRouteHandler = (
       }
     }
 
-    // 3. Sign the URL (the only place the adapter is called)
-    const r = await opts.fs.adapter.createPresignedUploadUrl({
-      key: body.key as never,
+    let fs = opts.fs;
+    if (opts.getAuth) {
+      const auth = await opts.getAuth(req);
+      if (!auth) {
+        return Response.json(
+          { ok: false, error: { code: "Unauthorized", message: "Not authenticated" } },
+          { status: 401 },
+        );
+      }
+      fs = opts.fs.forTenant(auth.tenantId);
+    }
+
+    const id =
+      typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `upl-${Date.now()}`;
+    const r = await fs.adapter.createPresignedUploadUrl({
+      key: asS3Key(id),
       contentType: body.contentType,
       expiresIn,
     });
@@ -158,7 +177,14 @@ export const createUploadRouteHandler = (
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
     return Response.json({
       ok: true,
-      value: { url: r.value.url, key: body.key, expiresAt },
+      value: {
+        url: r.value.url,
+        key: id,
+        id,
+        method: r.value.method,
+        headers: r.value.requiredHeaders ?? {},
+        expiresAt,
+      },
     });
   };
 };

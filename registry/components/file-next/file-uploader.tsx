@@ -34,8 +34,9 @@ import { cn } from "@/lib/cn";
 // ---------------------------------------------------------------------------
 
 export interface FileUploaderProps {
-  /** The presigned URL to PUT/POST the file to. */
-  readonly uploadUrl: string;
+  /** The presigned URL to PUT the file to. Ignored when requestUpload is set. */
+  readonly uploadUrl?: string;
+  readonly requestUpload?: Parameters<typeof useUploader>[0]["requestUpload"];
   /** Optional callback fired once the upload completes successfully. */
   readonly confirmUpload?: Parameters<typeof useUploader>[0]["confirmUpload"];
   /** Optional className for the dropzone. */
@@ -53,8 +54,8 @@ export interface FileUploaderProps {
 // ---------------------------------------------------------------------------
 
 export function FileUploader(props: FileUploaderProps): React.ReactElement {
-  const { uploadUrl, confirmUpload, className, label = "Upload a file", description = "Drag and drop or click to choose", accept } = props;
-  const { upload, cancel, progress, status, error } = useUploader({ uploadUrl, confirmUpload });
+  const { uploadUrl, requestUpload, confirmUpload, className, label = "Upload a file", description = "Drag and drop or click to choose", accept } = props;
+  const { upload, cancel, progress, status, error } = useUploader({ uploadUrl, requestUpload, confirmUpload });
   const [pickedFile, setPickedFile] = useState<{ name: string; size: number; type: string; content: Blob } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);

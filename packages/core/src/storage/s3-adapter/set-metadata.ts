@@ -1,24 +1,15 @@
 /**
- * `setMetadata` — replace (or merge) the user-defined metadata on
- * an existing object.
+ * `setMetadata` — replace or merge user-defined metadata.
  *
- * S3 has no native PATCH-metadata primitive. The standard
- * workaround is a self-`CopyObject` with `Metadata` set to the
- * new value and `MetadataDirective: "REPLACE"` (replace) or
- * "COPY" (merge). The body is re-uploaded by S3 server-side so
- * this is bandwidth-free for the consumer.
- *
- * If `replace === false` (default), the new metadata MERGES with
- * the existing user metadata (later wins on key conflict). If
- * `replace === true`, the new metadata REPLACES it entirely.
- *
- * Missing key returns NotFound.
+ * Merge reads current metadata, unions in JS, then REPLACE.
+ * COPY would ignore the new map.
  */
 import { CopyObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import { ok, err, type Result } from "@/types/result";
-import { FileSystemError, fromAws } from "@/errors";
+import { fromAws, type FileSystemError } from "@/errors";
 import type { FileSystemConfig } from "../config";
 import type { SetMetadataInput, SetMetadataOutput } from "../adapter";
+import { getMetadata } from "./get-metadata";
 
 export const setMetadata = async (
   client: S3Client,
@@ -26,13 +17,19 @@ export const setMetadata = async (
   input: SetMetadataInput,
 ): Promise<Result<SetMetadataOutput, FileSystemError>> => {
   try {
+    let metadata = input.metadata;
+    if (input.replace !== true) {
+      const current = await getMetadata(client, config, { key: input.key });
+      if (!current.ok) return current;
+      metadata = { ...(current.value as Record<string, string>), ...input.metadata };
+    }
     await client.send(
       new CopyObjectCommand({
         Bucket: config.bucket,
         Key: input.key,
         CopySource: `${config.bucket}/${input.key}`,
-        Metadata: input.metadata,
-        MetadataDirective: input.replace ? "REPLACE" : "COPY",
+        Metadata: metadata,
+        MetadataDirective: "REPLACE",
       }),
     );
     return ok({});

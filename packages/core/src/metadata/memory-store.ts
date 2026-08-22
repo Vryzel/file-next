@@ -41,6 +41,7 @@ import {
 import { FileSystemError } from "@/errors";
 import { asTenantId, asUserId } from "@/types/branded";
 import type { S3Key, TenantId } from "@/types/branded";
+import { decodeCursor, pageCursor } from "./cursor";
 import type {
   CreateNodeInput,
   DeleteNodeInput,
@@ -68,6 +69,10 @@ interface PendingOrphan {
 export const createMemoryStore = (): MetadataStore => {
   const nodes = new Map<string, FileNode>();
   const pendingOrphans = new Map<string, PendingOrphan>();
+  const shares = new Map<
+    string,
+    { tenantId: TenantId; nodeId: string; expiresAt: Date | null }
+  >();
   // Index: tenantId + parentId -> ordered child ids. Rebuilt on
   // createNode / moveNode / deleteNode. Keeps listChildren O(k)
   // for the k children of a folder, not O(n) over the whole store.
@@ -143,7 +148,16 @@ export const createMemoryStore = (): MetadataStore => {
       const nameOk = ensureNameAvailable(input.tenantId, input.parentId, input.name);
       if (!nameOk.ok) return nameOk;
 
-      const id = makeId();
+      const id = input.id ?? makeId();
+      if (nodes.has(id)) {
+        return err(
+          new FileSystemError({
+            code: "Conflict",
+            message: `Node ${id} already exists`,
+            retryable: false,
+          }),
+        );
+      }
       const now = new Date();
       const path = computePath(input.tenantId, input.parentId, input.name);
       const node: FileNode = {
@@ -185,13 +199,20 @@ export const createMemoryStore = (): MetadataStore => {
           items.push(n);
         }
       }
-      items.sort((a, b) => a.name.localeCompare(b.name));
-      const limit = input.limit ?? items.length;
-      const page = items.slice(0, limit);
-      const hasMore = items.length > limit;
+      items.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+      const cursor = decodeCursor(input.cursor);
+      const after = cursor
+        ? items.filter(
+            (n) =>
+              n.name.localeCompare(cursor.n) > 0 ||
+              (n.name === cursor.n && n.id.localeCompare(cursor.i) > 0),
+          )
+        : items;
+      const limit = input.limit ?? after.length;
+      const page = after.slice(0, limit);
       return ok({
         items: page,
-        nextCursor: hasMore ? items[limit]?.id : undefined,
+        nextCursor: pageCursor(page, limit),
       });
     },
 
@@ -444,12 +465,123 @@ export const createMemoryStore = (): MetadataStore => {
     },
 
     async reconcile(): Promise<Result<ReconcileResult, FileSystemError>> {
-      // No-op: the in-memory store has no external source to
-      // reconcile against. The SQLite/Postgres adapters will
-      // walk the S3 bucket and compare. We still return success
-      // so the contract test can run against the memory store
-      // without skipping.
       return ok({ orphansInStore: [], orphansInS3: [], scanned: nodes.size });
+    },
+
+    async restoreNode(input) {
+      const n = nodes.get(input.id);
+      if (!n || n.tenantId !== input.tenantId || n.deletedAt === null) {
+        return err(
+          new FileSystemError({
+            code: "NotFound",
+            message: `Deleted node ${input.id} not found`,
+            retryable: false,
+          }),
+        );
+      }
+      const available = ensureNameAvailable(n.tenantId, n.parentId, n.name);
+      if (!available.ok) return available;
+      const restored: FileNode = { ...n, deletedAt: null, updatedAt: new Date() };
+      nodes.set(n.id, restored);
+      return ok(restored);
+    },
+
+    async listTrash(input) {
+      const items = [...nodes.values()]
+        .filter((n) => n.tenantId === input.tenantId && n.deletedAt !== null)
+        .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+      const cursor = decodeCursor(input.cursor);
+      const after = cursor
+        ? items.filter(
+            (n) =>
+              n.name.localeCompare(cursor.n) > 0 ||
+              (n.name === cursor.n && n.id.localeCompare(cursor.i) > 0),
+          )
+        : items;
+      const limit = input.limit ?? after.length;
+      const page = after.slice(0, limit);
+      return ok({ items: page, nextCursor: pageCursor(page, limit) });
+    },
+
+    async scanFileKeys(input) {
+      return ok(
+        [...nodes.values()]
+          .filter(
+            (n) =>
+              n.tenantId === input.tenantId &&
+              n.deletedAt === null &&
+              n.kind === "file" &&
+              n.s3Key !== "",
+          )
+          .map((n) => ({ id: n.id, s3Key: n.s3Key })),
+      );
+    },
+
+    async sumSize(input) {
+      let total = 0;
+      for (const n of nodes.values()) {
+        if (n.tenantId === input.tenantId && n.deletedAt === null && n.kind === "file") {
+          total += n.size;
+        }
+      }
+      return ok(total);
+    },
+
+    async findByS3Key(input) {
+      for (const n of nodes.values()) {
+        if (
+          n.tenantId === input.tenantId &&
+          n.s3Key === input.s3Key &&
+          n.deletedAt === null
+        ) {
+          return ok(n);
+        }
+      }
+      return ok(null);
+    },
+
+    async createShare(input) {
+      const n = nodes.get(input.nodeId);
+      if (!n || n.tenantId !== input.tenantId || n.deletedAt !== null) {
+        return err(
+          new FileSystemError({
+            code: "NotFound",
+            message: `Node ${input.nodeId} not found`,
+            retryable: false,
+          }),
+        );
+      }
+      const token = makeId();
+      shares.set(token, {
+        tenantId: input.tenantId,
+        nodeId: input.nodeId,
+        expiresAt: input.expiresAt ?? null,
+      });
+      return ok({ token });
+    },
+
+    async resolveShare(input) {
+      const share = shares.get(input.token);
+      if (!share) return ok(null);
+      if (share.expiresAt && share.expiresAt.getTime() < Date.now()) return ok(null);
+      const n = nodes.get(share.nodeId);
+      if (!n || n.deletedAt !== null) return ok(null);
+      return ok(n);
+    },
+
+    async revokeShare(input) {
+      const share = shares.get(input.token);
+      if (!share || share.tenantId !== input.tenantId) {
+        return err(
+          new FileSystemError({
+            code: "NotFound",
+            message: `Share ${input.token} not found`,
+            retryable: false,
+          }),
+        );
+      }
+      shares.delete(input.token);
+      return ok(undefined);
     },
   };
 };

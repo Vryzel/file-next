@@ -144,7 +144,7 @@ describe("useUploader — spec headless#2", () => {
     expect(typeof result.current.cancel).toBe("function");
   });
 
-  it("open()s a POST to uploadUrl and send()s the file when upload() is called", () => {
+  it("open()s a PUT to uploadUrl and send()s the blob when upload() is called", () => {
     const { result } = renderUploader("/api/upload");
     const file: TestFile = makeFile({ name: "photo.png", size: 42, type: "image/png" });
 
@@ -153,9 +153,9 @@ describe("useUploader — spec headless#2", () => {
     });
 
     expect(lastXHR).not.toBeNull();
-    expect(lastXHR!.method).toBe("POST");
+    expect(lastXHR!.method).toBe("PUT");
     expect(lastXHR!.url).toBe("/api/upload");
-    expect(lastXHR!.body).toBe(file);
+    expect(lastXHR!.body).toBe(file.content);
     expect(result.current.status).toBe("uploading");
     expect(result.current.progress).toBe(0);
   });

@@ -101,7 +101,11 @@ export type {
 } from "./storage/adapter";
 
 export type { FileSystem } from "./storage/filesystem";
-export { createFileSystem } from "./storage/factory";
+export { createFileSystem, createMemoryFileSystem } from "./storage/factory";
+export { prefixAdapter, tenantPrefix } from "./storage/prefix-adapter";
+export { withAuth } from "./auth/with-auth";
+export type { AuthContext } from "./auth/with-auth";
+export type { CreateFileSystemOptions } from "./storage/filesystem";
 export { getFileSystem, _resetFileSystemForTests } from "./storage/singleton";
 export {
   createMemoryAdapter,

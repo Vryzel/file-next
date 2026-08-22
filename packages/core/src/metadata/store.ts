@@ -82,6 +82,8 @@ export interface CreateNodeInput {
   readonly s3Key: string;
   readonly ownerId: UserId;
   readonly metadata?: Readonly<Record<string, string>>;
+  /** Optional stable id (UUID). Defaults to a generated UUID. */
+  readonly id?: string;
 }
 
 export interface GetNodeInput {
@@ -240,5 +242,44 @@ export interface MetadataStore {
   deleteOrphan(input: {
     tenantId: TenantId;
     id: string;
+  }): Promise<Result<void, FileSystemError>>;
+
+  restoreNode(input: {
+    tenantId: TenantId;
+    id: string;
+  }): Promise<Result<FileNode, FileSystemError>>;
+
+  listTrash(input: {
+    tenantId: TenantId;
+    cursor?: string;
+    limit?: number;
+  }): Promise<Result<ListChildrenOutput, FileSystemError>>;
+
+  scanFileKeys(input: {
+    tenantId: TenantId;
+  }): Promise<Result<ReadonlyArray<{ id: string; s3Key: string }>, FileSystemError>>;
+
+  sumSize(input: {
+    tenantId: TenantId;
+  }): Promise<Result<number, FileSystemError>>;
+
+  findByS3Key(input: {
+    tenantId: TenantId;
+    s3Key: string;
+  }): Promise<Result<FileNode | null, FileSystemError>>;
+
+  createShare(input: {
+    tenantId: TenantId;
+    nodeId: string;
+    expiresAt?: Date;
+  }): Promise<Result<{ token: string }, FileSystemError>>;
+
+  resolveShare(input: {
+    token: string;
+  }): Promise<Result<FileNode | null, FileSystemError>>;
+
+  revokeShare(input: {
+    tenantId: TenantId;
+    token: string;
   }): Promise<Result<void, FileSystemError>>;
 }

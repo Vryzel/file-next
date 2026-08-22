@@ -58,14 +58,13 @@ const makeMemoryFs = (): FileSystem => {
     completeMultipartUpload: async () => ok({} as never),
     abortMultipartUpload: async () => ok({} as never),
   };
-  return {
+  const fs: FileSystem = {
     adapter,
     config: { provider: "s3", bucket: "b", region: "r", credentials: { accessKeyId: "a", secretAccessKey: "b" }, forcePathStyle: false },
     metadata: undefined,
-    forTenant: () => {
-      throw new Error("not used");
-    },
+    forTenant: () => fs,
   };
+  return fs;
 };
 
 const TENANT = asTenantId("tenant-a");
@@ -80,7 +79,12 @@ beforeEach(() => {
   store = createMemoryStore();
   fs = makeMemoryFs();
   wt = createWriteThrough(fs, store);
-  actions = createServerActions({ store, writeThrough: wt });
+  actions = createServerActions({
+    store,
+    writeThrough: wt,
+    fs,
+    getAuth: () => ({ tenantId: TENANT, userId: USER }),
+  });
 });
 
 describe("PR 7a: listFilesAction — metadata-first (no S3 call)", () => {
@@ -105,14 +109,14 @@ describe("PR 7a: listFilesAction — metadata-first (no S3 call)", () => {
       s3Key: "b.txt",
       ownerId: USER,
     });
-    const r = await actions.listFiles({ tenantId: TENANT, parentId: null });
+    const r = await actions.listFiles({ parentId: null });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.items.map((n) => n.name).sort()).toEqual(["a.txt", "b.txt"]);
   });
 
   it("rejects bad input with a typed FileSystemError (Zod validation)", async () => {
-    const r = await actions.listFiles({ tenantId: "" as never, parentId: null });
+    const r = await actions.listFiles({ parentId: 1 as never });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error).toBeInstanceOf(FileSystemError);
@@ -141,7 +145,7 @@ describe("PR 7a: deleteFileAction — cascades metadata + S3", () => {
     });
     if (!c.ok) throw new Error("setup");
 
-    const d = await actions.deleteFile({ tenantId: TENANT, id: c.value.id });
+    const d = await actions.deleteFile({ id: c.value.id });
     expect(d.ok).toBe(true);
     // Metadata is gone
     const g = await store.getNode({ tenantId: TENANT, id: c.value.id });
@@ -178,7 +182,6 @@ describe("PR 7a: moveFileAction — metadata-only in v0.1", () => {
     if (!folder.ok) throw new Error("setup");
 
     const m = await actions.moveFile({
-      tenantId: TENANT,
       id: c.value.id,
       newParentId: folder.value.id,
     });
@@ -190,8 +193,8 @@ describe("PR 7a: moveFileAction — metadata-only in v0.1", () => {
   });
 });
 
-describe("PR 7a: copyFileAction — creates a new metadata node (shared s3Key)", () => {
-  it("creates a new node that references the same s3Key", async () => {
+  describe("copyFileAction — copies bytes to a new key", () => {
+  it("creates a new node with its own s3Key", async () => {
     const c = await store.createNode({
       tenantId: TENANT,
       parentId: null,
@@ -216,7 +219,6 @@ describe("PR 7a: copyFileAction — creates a new metadata node (shared s3Key)",
     if (!folder.ok) throw new Error("setup");
 
     const r = await actions.copyFile({
-      tenantId: TENANT,
       id: c.value.id,
       newParentId: folder.value.id,
       newName: "copy.txt",
@@ -224,12 +226,12 @@ describe("PR 7a: copyFileAction — creates a new metadata node (shared s3Key)",
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.name).toBe("copy.txt");
-    expect(r.value.s3Key).toBe("src.txt"); // shared
+    expect(r.value.s3Key).not.toBe("src.txt");
     expect(r.value.size).toBe(42);
   });
 
   it("returns NotFound for a missing source id", async () => {
-    const r = await actions.copyFile({ tenantId: TENANT, id: "nope", newParentId: null });
+    const r = await actions.copyFile({ id: "nope", newParentId: null });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error.code).toBe("NotFound");
@@ -251,7 +253,6 @@ describe("PR 7a: setMetadataAction — store.updateMetadata", () => {
     });
     if (!c.ok) throw new Error("setup");
     const r = await actions.setMetadata({
-      tenantId: TENANT,
       id: c.value.id,
       metadata: { b: "2" },
     });
