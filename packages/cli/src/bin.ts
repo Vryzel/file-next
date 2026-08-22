@@ -11,8 +11,12 @@
  * package.json points the `file-next` command at it.
  */
 import { dispatch } from "./index.js";
+import { defaultMigrateHooks, defaultReconcileHooks } from "./runtime.js";
 
-dispatch(process.argv.slice(2))
+dispatch(process.argv.slice(2), {
+  migrate: defaultMigrateHooks(),
+  reconcile: defaultReconcileHooks(),
+})
   .then(({ exitCode, stdout, stderr }) => {
     if (stdout) process.stdout.write(stdout);
     if (stderr) process.stderr.write(stderr);

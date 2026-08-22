@@ -27,6 +27,7 @@ import {
   Copy,
   ExternalLink,
   FolderInput,
+  Link2,
   Pencil,
   RotateCcw,
   Trash2,
@@ -45,6 +46,7 @@ export interface ExplorerContextMenuActions {
   readonly copyFile: (input: { id: string; newParentId: string | null }) => Promise<unknown>;
   readonly renameFile: (id: string, newName: string) => Promise<void>;
   readonly restoreNode?: (input: { id: string }) => Promise<unknown>;
+  readonly createShare?: (input: { id: string }) => Promise<string>;
 }
 
 export interface ExplorerContextMenuProps {
@@ -187,6 +189,21 @@ export function ExplorerContextMenu(
             <Copy aria-hidden="true" className="size-4" />
             Copy to folder…
           </ContextMenu.Item>
+
+          {actions.createShare ? (
+            <ContextMenu.Item
+              onSelect={() => {
+                void safeRun("Share", async () => {
+                  const token = await actions.createShare!({ id: file.id });
+                  await navigator.clipboard.writeText(token);
+                });
+              }}
+              className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+            >
+              <Link2 aria-hidden="true" className="size-4" />
+              Copy share token
+            </ContextMenu.Item>
+          ) : null}
 
           <ContextMenu.Separator className="my-1 h-px bg-border" />
 

@@ -21,7 +21,10 @@
       "@/lib/*": ["./packages/core/src/lib/*"],
       "file-next": ["./packages/core/src/index.ts"],
       "file-next/server": ["./packages/core/src/server/index.ts"],
-      "file-next/sync": ["./packages/core/src/sync/index.ts"]
+      "file-next/sync": ["./packages/core/src/sync/index.ts"],
+      "file-next/errors": ["./packages/core/src/errors/index.ts"],
+      "@file-next/headless": ["./packages/headless/src/index.ts"],
+      "@file-next/ui/*": ["./registry/components/file-next/*"]
     }
   },
   "include": [
@@ -30,5 +33,5 @@
     "**/*.tsx",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "dist", ".next", "packages/headless", "packages/cli", "registry", "tests/registry"]
+  "exclude": ["node_modules", "dist", ".next", "packages/cli", "registry/tests", "tests/registry"]
 }

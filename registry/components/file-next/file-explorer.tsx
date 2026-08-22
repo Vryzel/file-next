@@ -26,10 +26,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent,
 } from "react";
-import { useFileExplorer } from "@file-next/headless";
+import { useFileExplorer, useUploader } from "@file-next/headless";
+import type { RequestUploadResult, UploaderFile } from "@file-next/headless";
 import type {
   FileNode,
   FileSystemError,
@@ -63,6 +65,8 @@ export interface FileExplorerActions {
   readonly copyFile: (input: { id: string; newParentId: string | null; newName?: string }) => Promise<unknown>;
   readonly renameFile: (id: string, newName: string) => Promise<void>;
   readonly restoreNode?: (input: { id: string }) => Promise<unknown>;
+  readonly createShare?: (input: { id: string }) => Promise<string>;
+  readonly createFolder?: (input: { name: string; parentId: string | null }) => Promise<unknown>;
 }
 
 type OverlayQuery = (
@@ -100,6 +104,9 @@ export interface FileExplorerProps {
   /** Called when files are dropped onto a folder. */
   readonly searchFiles?: OverlayQuery;
   readonly listTrash?: OverlayQuery;
+  readonly requestUpload?: (file: UploaderFile) => Promise<RequestUploadResult>;
+  readonly usedBytes?: number;
+  readonly quotaBytes?: number;
   readonly onMove?: (input: {
     itemIds: ReadonlyArray<string>;
     destinationFolderId: string;
@@ -161,6 +168,9 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
     onOpenInNewTab,
     searchFiles,
     listTrash,
+    requestUpload,
+    usedBytes,
+    quotaBytes,
     onMove = () => undefined,
     refreshKey,
     className,
@@ -176,6 +186,14 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
     onActivate: (file) => {
       if (file.kind === "folder" && onOpenFolder) onOpenFolder(file);
       else if (onActivate) onActivate(file);
+    },
+  });
+
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const uploader = useUploader({
+    requestUpload,
+    confirmUpload: () => {
+      void explorer.refetch();
     },
   });
 
@@ -324,9 +342,49 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
           {sortedFiles.length} item{sortedFiles.length === 1 ? "" : "s"}
           {trashOpen ? " in trash" : ""}
         </span>
+        {requestUpload ? (
+          <>
+            <input
+              ref={uploadInputRef}
+              type="file"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                uploader.upload({
+                  name: file.name,
+                  size: file.size,
+                  type: file.type,
+                  content: file,
+                });
+                event.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => uploadInputRef.current?.click()}
+              className="inline-flex h-8 items-center rounded-md border border-border px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {uploader.status === "uploading" ? `${uploader.progress}%` : "Upload"}
+            </button>
+          </>
+        ) : null}
         <ExplorerToolbar
           view={explorer.view}
           onViewChange={explorer.setView}
+          onNewFolder={
+            actions.createFolder
+              ? () => {
+                  const name = window.prompt("Folder name");
+                  if (!name?.trim()) return;
+                  void actions.createFolder?.({ name: name.trim(), parentId }).then(() => {
+                    void explorer.refetch();
+                  });
+                }
+              : undefined
+          }
+          usedBytes={usedBytes}
+          quotaBytes={quotaBytes}
           query={query}
           onQueryChange={
             searchFiles

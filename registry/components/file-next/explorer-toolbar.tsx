@@ -9,7 +9,7 @@
  *   - Two icon buttons with aria-pressed states.
  *   - Keyboard accessible: focus ring + Enter / Space activates.
  */
-import { LayoutGrid, List as ListIcon, Search, Trash2 } from "lucide-react";
+import { FolderPlus, LayoutGrid, List as ListIcon, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { ViewMode } from "@file-next/headless";
 
@@ -20,6 +20,9 @@ export interface ExplorerToolbarProps {
   readonly onQueryChange?: (query: string) => void;
   readonly trashOpen?: boolean;
   readonly onTrashToggle?: () => void;
+  readonly onNewFolder?: () => void;
+  readonly usedBytes?: number;
+  readonly quotaBytes?: number;
   /** Optional className for the wrapper. */
   readonly className?: string;
 }
@@ -34,10 +37,28 @@ export function ExplorerToolbar(
     onQueryChange,
     trashOpen,
     onTrashToggle,
+    onNewFolder,
+    usedBytes,
+    quotaBytes,
     className,
   } = props;
   return (
     <div className={cn("flex items-center gap-2", className)}>
+      {quotaBytes != null ? (
+        <span className="hidden text-xs text-muted-foreground sm:inline">
+          {formatBytes(usedBytes ?? 0)} / {formatBytes(quotaBytes)}
+        </span>
+      ) : null}
+      {onNewFolder ? (
+        <button
+          type="button"
+          aria-label="New folder"
+          onClick={onNewFolder}
+          className="inline-flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <FolderPlus aria-hidden="true" className="size-4" />
+        </button>
+      ) : null}
       {onQueryChange ? (
         <label className="relative min-w-40 flex-1">
           <Search
@@ -107,3 +128,9 @@ export function ExplorerToolbar(
     </div>
   );
 }
+
+const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};

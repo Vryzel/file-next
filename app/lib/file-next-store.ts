@@ -1,10 +1,12 @@
 /**
- * Demo app wiring — memory adapter + SQLite metadata (survives refresh).
+ * Demo wiring — SQLite metadata + R2/S3 when env is set, otherwise memory bytes.
  */
 import {
+  createFileSystem,
   createMemoryFileSystem,
   createMemoryStore,
   createSqliteStore,
+  parseFileSystemConfig,
   asTenantId,
   asUserId,
   type FileSystem,
@@ -12,6 +14,10 @@ import {
 } from "file-next";
 import { createServerActions } from "file-next/server";
 import { createWriteThrough } from "file-next/sync";
+import { DEMO_QUOTA_BYTES } from "./constants";
+
+export const DEMO_TENANT = asTenantId("acme");
+export const DEMO_USER = asUserId("user-1");
 
 let _store: MetadataStore | null = null;
 let _fs: FileSystem | null = null;
@@ -30,12 +36,32 @@ export function getStore(): MetadataStore {
 
 function getFileSystemInstance(): FileSystem {
   if (!_fs) {
-    _fs = createMemoryFileSystem({ store: getStore() });
+    const store = getStore();
+    const parsed = parseFileSystemConfig({
+      provider: process.env.FILE_NEXT_PROVIDER,
+      bucket: process.env.FILE_NEXT_BUCKET,
+      region: process.env.FILE_NEXT_REGION,
+      endpoint: process.env.FILE_NEXT_ENDPOINT,
+      credentials:
+        process.env.FILE_NEXT_ACCESS_KEY_ID && process.env.FILE_NEXT_SECRET_ACCESS_KEY
+          ? {
+              accessKeyId: process.env.FILE_NEXT_ACCESS_KEY_ID,
+              secretAccessKey: process.env.FILE_NEXT_SECRET_ACCESS_KEY,
+            }
+          : undefined,
+      forcePathStyle:
+        process.env.FILE_NEXT_PROVIDER === "r2"
+          ? true
+          : process.env.FILE_NEXT_FORCE_PATH_STYLE === "true",
+    });
+    _fs = parsed.ok
+      ? createFileSystem(parsed.value, { store, quotaBytes: DEMO_QUOTA_BYTES })
+      : createMemoryFileSystem({ store, quotaBytes: DEMO_QUOTA_BYTES });
   }
   return _fs;
 }
 
-function getWriteThroughInstance(): ReturnType<typeof createWriteThrough> {
+export function getWriteThrough(): ReturnType<typeof createWriteThrough> {
   if (!_writeThrough) {
     _writeThrough = createWriteThrough(getFileSystemInstance(), getStore());
   }
@@ -46,7 +72,7 @@ export function getActions(): ReturnType<typeof createServerActions> {
   if (!_actions) {
     _actions = createServerActions({
       store: getStore(),
-      writeThrough: getWriteThroughInstance(),
+      writeThrough: getWriteThrough(),
       fs: getFileSystemInstance(),
       getAuth: () => ({ tenantId: DEMO_TENANT, userId: DEMO_USER }),
     });
@@ -64,6 +90,3 @@ export function _resetForTests(): void {
   _actions = null;
   _writeThrough = null;
 }
-
-export const DEMO_TENANT = asTenantId("acme");
-export const DEMO_USER = asUserId("user-1");
