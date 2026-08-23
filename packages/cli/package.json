@@ -1,12 +1,12 @@
 {
   "name": "@file-next/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI for file-next — migrate metadata schemas, reconcile drift between S3 and the metadata index, and diagnose environment / connectivity issues.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
   "bin": {
-    "file-next": "./dist/index.js"
+    "file-next": "./dist/bin.js"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

@@ -101,18 +101,34 @@ export type {
 } from "./storage/adapter";
 
 export type { FileSystem } from "./storage/filesystem";
-export { createFileSystem } from "./storage/factory";
+export { createFileSystem, createMemoryFileSystem } from "./storage/factory";
+export { prefixAdapter, tenantPrefix } from "./storage/prefix-adapter";
+export { withAuth } from "./auth/with-auth";
+export type { AuthContext } from "./auth/with-auth";
+export type { CreateFileSystemOptions } from "./storage/filesystem";
 export { getFileSystem, _resetFileSystemForTests } from "./storage/singleton";
+export {
+  createMemoryAdapter,
+  type MemoryAdapterOptions,
+  type MemoryStoreSnapshot,
+} from "./storage/memory-adapter";
 export type {
   FileSystemConfig,
   S3Config,
   R2Config,
   Credentials,
 } from "./storage/config";
+export { parseFileSystemConfig } from "./storage/config";
 export type { MetadataStore } from "./metadata/store";
 
 // PR 4a: metadata store
-export { createMemoryStore } from "./metadata";
+export {
+  createMemoryStore,
+  createSqliteStore,
+  type SqliteStoreOptions,
+  createPostgresStore,
+  type PostgresStoreOptions,
+} from "./metadata";
 export type {
   FileNode,
   NodeKind,

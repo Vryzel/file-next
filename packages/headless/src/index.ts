@@ -37,6 +37,7 @@ export { useUploader } from "./use-uploader";
 export type {
   UploaderFile,
   ConfirmUploadFn,
+  RequestUploadResult,
   UseUploaderOptions,
   UseUploaderReturn,
   UseUploaderState,
@@ -77,3 +78,10 @@ export type {
   UseDownloadProgressState,
   UseDownloadProgressStatus,
 } from "./use-download-progress";
+
+export { useFileExplorer } from "./use-file-explorer";
+export type {
+  UseFileExplorerOptions,
+  UseFileExplorerReturn,
+  ViewMode,
+} from "./use-file-explorer";

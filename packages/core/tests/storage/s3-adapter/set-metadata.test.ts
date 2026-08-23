@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { mockClient } from "aws-sdk-client-mock";
-import { S3Client, CopyObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, CopyObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { setMetadata } from "@/storage/s3-adapter/set-metadata";
 import { asS3Key } from "@/types/branded";
 import type { FileSystemConfig } from "@/storage/config";
@@ -26,7 +26,8 @@ const client = new S3Client({ region: "us-east-1" });
 describe("T-017: setMetadata — S3CompatibleAdapter", () => {
   beforeEach(() => s3Mock.reset());
 
-  it("happy path: merge mode (default) uses MetadataDirective: COPY", async () => {
+  it("happy path: merge mode (default) unions existing metadata then REPLACE", async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ Metadata: { author: "ada" } });
     s3Mock.on(CopyObjectCommand).resolves({});
     const result = await setMetadata(client, config, {
       key: asS3Key("uploads/x.txt"),
@@ -34,9 +35,8 @@ describe("T-017: setMetadata — S3CompatibleAdapter", () => {
     });
     expect(result.ok).toBe(true);
     const calls = s3Mock.commandCalls(CopyObjectCommand);
-    expect(calls[0]?.args[0]?.input.MetadataDirective).toBe("COPY");
-    expect(calls[0]?.args[0]?.input.Metadata).toEqual({ version: "2" });
-    // CopySource must point at self
+    expect(calls[0]?.args[0]?.input.MetadataDirective).toBe("REPLACE");
+    expect(calls[0]?.args[0]?.input.Metadata).toEqual({ author: "ada", version: "2" });
     expect(calls[0]?.args[0]?.input.CopySource).toBe("test-bucket/uploads/x.txt");
   });
 
@@ -53,7 +53,7 @@ describe("T-017: setMetadata — S3CompatibleAdapter", () => {
   });
 
   it("missing key: NoSuchKey -> NotFound", async () => {
-    s3Mock.on(CopyObjectCommand).rejects({
+    s3Mock.on(HeadObjectCommand).rejects({
       name: "NoSuchKey",
       message: "missing",
       $metadata: { httpStatusCode: 404 },

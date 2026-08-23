@@ -1,0 +1,56 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "file-explorer",
+  "type": "registry:block",
+  "title": "File Explorer",
+  "description": "Full file-browser orchestrator: list/grid views, search, trash, upload, new folder, share token, drag-drop.",
+  "categories": ["files", "dashboard"],
+  "dependencies": ["@file-next/headless", "lucide-react", "@radix-ui/react-context-menu"],
+  "files": [
+    {
+      "path": "registry/components/file-next/file-explorer.tsx",
+      "type": "registry:component",
+      "target": "components/file-next/file-explorer.tsx"
+    },
+    {
+      "path": "registry/components/file-next/explorer-toolbar.tsx",
+      "type": "registry:component",
+      "target": "components/file-next/explorer-toolbar.tsx"
+    },
+    {
+      "path": "registry/components/file-next/explorer-list-view.tsx",
+      "type": "registry:component",
+      "target": "components/file-next/explorer-list-view.tsx"
+    },
+    {
+      "path": "registry/components/file-next/explorer-grid-view.tsx",
+      "type": "registry:component",
+      "target": "components/file-next/explorer-grid-view.tsx"
+    },
+    {
+      "path": "registry/components/file-next/explorer-context-menu.tsx",
+      "type": "registry:component",
+      "target": "components/file-next/explorer-context-menu.tsx"
+    },
+    {
+      "path": "registry/components/file-next/file-icon.tsx",
+      "type": "registry:component",
+      "target": "components/file-next/file-icon.tsx"
+    },
+    {
+      "path": "registry/components/file-next/breadcrumbs.tsx",
+      "type": "registry:component",
+      "target": "components/file-next/breadcrumbs.tsx"
+    },
+    {
+      "path": "registry/components/file-next/empty-state.tsx",
+      "type": "registry:component",
+      "target": "components/file-next/empty-state.tsx"
+    },
+    {
+      "path": "registry/components/file-next/error-state.tsx",
+      "type": "registry:component",
+      "target": "components/file-next/error-state.tsx"
+    }
+  ]
+}

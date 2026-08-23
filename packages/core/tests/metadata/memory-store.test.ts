@@ -376,6 +376,24 @@ describe("T-026: search", () => {
     if (!a.ok) return;
     expect(a.value.items).toHaveLength(1);
   });
+
+  it("preserves naive substring semantics (v0.2 contract)", async () => {
+    // The memory store keeps `String.includes` substring matching
+    // intentionally — no FTS index needed in an in-process Map.
+    // This test pins the contract so a future "optimization"
+    // can't silently change it (e.g. tokenizer-based matching
+    // would lose substring fidelity for chars like % or _).
+    await store.createNode(makeFileInput({ name: "100%done.txt" }));
+    await store.createNode(makeFileInput({ name: "100abc.txt" }));
+
+    // Substring "100%" matches only "100%done.txt" — the FTS5
+    // and pg_trgm adapters DON'T replicate this (their tokenizers
+    // strip % as a non-token char) but the memory adapter does.
+    const r = await store.search({ tenantId: TENANT_A, query: "100%" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items.map((n) => n.name)).toEqual(["100%done.txt"]);
+  });
 });
 
 // ---------------------------------------------------------------------------

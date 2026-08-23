@@ -14,5 +14,7 @@ export type {
   OrphanOp,
   WriteThroughFileInput,
   DeleteThroughFileInput,
+  CopyThroughFileInput,
+  ConfirmUploadInput,
   ReconcileReport,
 } from "./write-through";

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "explorer-toolbar",
+  "type": "registry:component",
+  "title": "Explorer Toolbar",
+  "description": "View-mode toggle (list | grid) for the file explorer. Radix-free, accessible, pairs with the FileExplorer shell.",
+  "categories": ["files", "controls"],
+  "dependencies": ["lucide-react"],
+  "files": [
+    {
+      "path": "registry/components/file-next/explorer-toolbar.tsx",
+      "type": "registry:component",
+      "target": "@components/file-next/explorer-toolbar.tsx"
+    }
+  ]
+}

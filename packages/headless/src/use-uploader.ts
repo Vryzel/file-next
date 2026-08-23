@@ -24,7 +24,7 @@
  *     via `upload()`), so double-invocation is not an issue.
  */
 import { useCallback, useReducer, useRef, type Reducer } from "react";
-import { FileSystemError } from "file-next";
+import { FileSystemError } from "file-next/errors";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -39,11 +39,24 @@ export interface UploaderFile {
 }
 
 /** Optional post-upload confirm callback. Receives the XHR + the file. */
-export type ConfirmUploadFn = (xhr: XMLHttpRequest, file: UploaderFile) => void;
+export type ConfirmUploadFn = (
+  xhr: XMLHttpRequest,
+  file: UploaderFile,
+  meta?: { id?: string },
+) => void;
+
+export interface RequestUploadResult {
+  readonly url: string;
+  readonly method?: "PUT" | "POST";
+  readonly headers?: Record<string, string>;
+  readonly id?: string;
+}
 
 export interface UseUploaderOptions {
-  /** The presigned URL to PUT/POST the file to. */
-  readonly uploadUrl: string;
+  /** The presigned URL to PUT the file to. Ignored when `requestUpload` is set. */
+  readonly uploadUrl?: string;
+  /** Resolve a fresh presigned URL per file (preferred). */
+  readonly requestUpload?: (file: UploaderFile) => Promise<RequestUploadResult>;
   /**
    * Optional callback fired once the upload completes successfully.
    * Typically used to trigger a server action that records metadata.
@@ -118,7 +131,7 @@ const reducer: Reducer<UseUploaderState, Action> = (state, action) => {
  * the user picks a file).
  */
 export function useUploader(options: UseUploaderOptions): UseUploaderReturn {
-  const { uploadUrl, confirmUpload } = options;
+  const { uploadUrl, requestUpload, confirmUpload } = options;
   const [state, dispatch] = useReducer(reducer, initial);
 
   // Hold the live XHR in a ref so cancel() can abort the right one
@@ -128,9 +141,8 @@ export function useUploader(options: UseUploaderOptions): UseUploaderReturn {
   // load/error listeners don't override the canceled state.
   const canceledRef = useRef<boolean>(false);
 
-  const upload = useCallback(
-    (file: UploaderFile) => {
-      // Guard: ignore re-entry while an upload is in flight.
+  const startXhr = useCallback(
+    (file: UploaderFile, target: RequestUploadResult) => {
       if (xhrRef.current !== null) return;
 
       const xhr = new XMLHttpRequest();
@@ -144,12 +156,42 @@ export function useUploader(options: UseUploaderOptions): UseUploaderReturn {
       });
 
       xhr.addEventListener("load", () => {
-        // Only commit success if this XHR is still the current one
-        // and was not canceled (some browsers fire load after abort).
         if (xhrRef.current !== xhr || canceledRef.current) return;
         xhrRef.current = null;
+        if (xhr.status < 200 || xhr.status >= 300) {
+          let message = `Upload failed (${xhr.status})`;
+          try {
+            const parsed = JSON.parse(xhr.responseText) as {
+              error?: { message?: string };
+            };
+            if (parsed.error?.message) message = parsed.error.message;
+          } catch {
+            /* keep status fallback */
+          }
+          dispatch({
+            type: "UPLOAD_ERROR",
+            error: new FileSystemError({
+              code: "NetworkError",
+              retryable: true,
+              message,
+              cause: { code: "HttpError", message: `status ${xhr.status}` },
+            }),
+          });
+          return;
+        }
         dispatch({ type: "UPLOAD_SUCCESS" });
-        confirmUpload?.(xhr, file);
+        void Promise.resolve(confirmUpload?.(xhr, file, { id: target.id })).catch(
+          (error: unknown) => {
+            dispatch({
+              type: "UPLOAD_ERROR",
+              error: new FileSystemError({
+                code: "InternalError",
+                retryable: false,
+                message: error instanceof Error ? error.message : "confirmUpload failed",
+              }),
+            });
+          },
+        );
       });
 
       xhr.addEventListener("error", () => {
@@ -160,21 +202,51 @@ export function useUploader(options: UseUploaderOptions): UseUploaderReturn {
           error: new FileSystemError({
             code: "NetworkError",
             retryable: true,
-            message: "XHR upload failed",
+            message:
+              "XHR upload failed (usually CORS). Same-origin /api/upload avoids this.",
             cause: { code: "XhrError", message: "XHR error event" },
           }),
         });
       });
 
       dispatch({ type: "UPLOAD_START" });
-      xhr.open("POST", uploadUrl);
-      // The test asserts the entire UploaderFile is the XHR body
-      // (so consumers can inspect name/size in middleware). The
-      // cast through `unknown` is needed because the DOM type only
-      // allows Document | XMLHttpRequestBodyInit.
-      xhr.send(file as unknown as XMLHttpRequestBodyInit);
+      xhr.open(target.method ?? "PUT", target.url);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      for (const [header, value] of Object.entries(target.headers ?? {})) {
+        xhr.setRequestHeader(header, value);
+      }
+      xhr.send(file.content);
     },
-    [uploadUrl, confirmUpload],
+    [confirmUpload],
+  );
+
+  const upload = useCallback(
+    (file: UploaderFile) => {
+      if (xhrRef.current !== null) return;
+      if (requestUpload) {
+        dispatch({ type: "UPLOAD_START" });
+        void requestUpload(file)
+          .then((target) => {
+            if (canceledRef.current) return;
+            xhrRef.current = null;
+            startXhr(file, target);
+          })
+          .catch((error: unknown) => {
+            dispatch({
+              type: "UPLOAD_ERROR",
+              error: new FileSystemError({
+                code: "NetworkError",
+                retryable: true,
+                message: error instanceof Error ? error.message : "requestUpload failed",
+              }),
+            });
+          });
+        return;
+      }
+      if (!uploadUrl) return;
+      startXhr(file, { url: uploadUrl, method: "PUT" });
+    },
+    [requestUpload, startXhr, uploadUrl],
   );
 
   const cancel = useCallback(() => {

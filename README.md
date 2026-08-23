@@ -26,12 +26,11 @@ export AWS_SECRET_ACCESS_KEY=...
 # 3. Wire it up in Next.js (server action)
 "use server";
 import { createServerActions } from "file-next/server";
-const actions = createServerActions({ store, writeThrough });
+const actions = createServerActions({ store, writeThrough, fs, getAuth });
 export const listFiles = actions.listFiles;
 
-# 4. Add the registry components
-npx shadcn@^2.1.0 add @file-next/file-browser
-npx shadcn@^2.1.0 add @file-next/file-uploader
+# 4. Copy the explorer into your app
+npx shadcn@2.1.0 add https://raw.githubusercontent.com/Vryzel/file-next/main/registry/file-explorer.json
 ```
 
 That's it — you have a file browser, uploader, and server actions in 5 minutes.

@@ -29,14 +29,24 @@
  *   export { listFilesAction };
  */
 export { createServerActions } from "./actions";
-export type { ServerActionsDeps, ListFilesOutput } from "./actions";
+export type { ServerActionsDeps, ListFilesOutput, PrepareUploadOutput } from "./actions";
 export {
   ListFilesInputSchema,
   DeleteFileInputSchema,
   MoveFileInputSchema,
   CopyFileInputSchema,
   SetMetadataInputSchema,
+  CreateFolderInputSchema,
+  PrepareUploadInputSchema,
+  ConfirmUploadInputSchema,
+  SearchFilesInputSchema,
+  RestoreNodeInputSchema,
+  CreateShareInputSchema,
+  ResolveShareInputSchema,
+  RevokeShareInputSchema,
 } from "./actions";
+export { withAuth } from "../auth/with-auth";
+export type { AuthContext } from "../auth/with-auth";
 export {
   createUploadRouteHandler,
   createDownloadRouteHandler,

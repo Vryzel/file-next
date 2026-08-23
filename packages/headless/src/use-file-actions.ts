@@ -57,6 +57,7 @@ export interface CopyFileOutput {
 export type DeleteFileFn = (input: DeleteFileInput) => Promise<Result<DeleteFileOutput, FileSystemError>>;
 export type MoveFileFn = (input: MoveFileInput) => Promise<Result<MoveFileOutput, FileSystemError>>;
 export type CopyFileFn = (input: CopyFileInput) => Promise<Result<CopyFileOutput, FileSystemError>>;
+export type RenameFileFn = (id: string, newName: string) => Promise<void>;
 
 export interface UseFileActionsOptions {
   /** The current file list (consumer-owned). */
@@ -68,6 +69,7 @@ export interface UseFileActionsOptions {
     readonly deleteFile: DeleteFileFn;
     readonly moveFile: MoveFileFn;
     readonly copyFile: CopyFileFn;
+    readonly renameFile: RenameFileFn;
   };
 }
 
@@ -85,6 +87,7 @@ export interface UseFileActionsReturn {
   readonly deleteFile: (id: string) => Promise<void>;
   readonly moveFile: (id: string, newParentId: string) => Promise<void>;
   readonly copyFile: (id: string, newParentId: string) => Promise<void>;
+  readonly renameFile: (id: string, newName: string) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +142,14 @@ export function applyCopy(
   node: FileNode,
 ): ReadonlyArray<FileNode> {
   return [...files, node];
+}
+
+export function applyRename(
+  files: ReadonlyArray<FileNode>,
+  id: string,
+  newName: string,
+): ReadonlyArray<FileNode> {
+  return files.map((file) => (file.id === id ? { ...file, name: newName } : file));
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +238,22 @@ export function useFileActions(options: UseFileActionsOptions): UseFileActionsRe
     [run, actions.copyFile, files],
   );
 
+  const renameFile = useCallback(
+    async (id: string, newName: string) => {
+      const snapshot = files;
+      dispatch({ type: "START" });
+      setFiles(applyRename(files, id, newName));
+      try {
+        await actions.renameFile(id, newName);
+        dispatch({ type: "SUCCESS" });
+      } catch (error) {
+        setFiles(snapshot);
+        dispatch({ type: "ERROR", error: error as FileSystemError });
+      }
+    },
+    [actions.renameFile, files, setFiles],
+  );
+
   return {
     status: state.status,
     isPending: state.status === "pending",
@@ -234,5 +261,6 @@ export function useFileActions(options: UseFileActionsOptions): UseFileActionsRe
     deleteFile,
     moveFile,
     copyFile,
+    renameFile,
   };
 }

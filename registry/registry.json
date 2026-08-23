@@ -53,6 +53,48 @@
       "title": "File Error State",
       "description": "Error banner shown when list / upload fails. Built on shadcn Alert.",
       "categories": ["files", "states"]
+    },
+    {
+      "name": "file-explorer",
+      "type": "registry:block",
+      "title": "File Explorer",
+      "description": "Full file-browser orchestrator: list/grid views, context menu, drag-drop, breadcrumbs. Built on useFileExplorer from @file-next/headless.",
+      "categories": ["files", "dashboard"]
+    },
+    {
+      "name": "file-icon",
+      "type": "registry:component",
+      "title": "File Icon",
+      "description": "Mime-type-aware file/folder icon. Lucide with wildcard fallback for image/*, text/*, audio/*, video/*.",
+      "categories": ["files", "display"]
+    },
+    {
+      "name": "explorer-list-view",
+      "type": "registry:block",
+      "title": "Explorer List View",
+      "description": "Table view with sortable columns (Name, Size, Modified, Kind). Drag-drop + right-click enabled.",
+      "categories": ["files", "display"]
+    },
+    {
+      "name": "explorer-grid-view",
+      "type": "registry:block",
+      "title": "Explorer Grid View",
+      "description": "Card-grid layout for the file explorer. Each file is a square card with icon + name + size. Drag-drop + right-click enabled.",
+      "categories": ["files", "display"]
+    },
+    {
+      "name": "explorer-toolbar",
+      "type": "registry:component",
+      "title": "Explorer Toolbar",
+      "description": "View-mode toggle (list | grid) for the file explorer. Accessible button pair.",
+      "categories": ["files", "controls"]
+    },
+    {
+      "name": "explorer-context-menu",
+      "type": "registry:block",
+      "title": "Explorer Context Menu",
+      "description": "Right-click context menu: Open, Rename, Move to, Copy to, Delete. Radix ContextMenu under the hood.",
+      "categories": ["files", "menus"]
     }
   ]
 }

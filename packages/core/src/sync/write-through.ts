@@ -1,73 +1,26 @@
 /**
- * `WriteThrough` — the sync layer that keeps S3 (bytes) and the
- * MetadataStore (tree) in lockstep.
+ * WriteThrough — keeps object storage and the metadata tree in lockstep.
  *
- * Why a separate layer (and not methods on FileSystem or
- * MetadataStore):
- *   - The FileSystem doesn't know about the store (the S3
- *     adapter is provider-agnostic; the store is consumer-
- *     specific via BYODB).
- *   - The MetadataStore doesn't know about S3 (it only mirrors
- *     the tree; bytes are not its concern).
- *   - The compensation (pending_orphan_log) is a cross-cutting
- *     concern that belongs to neither — and to the consumer's
- *     process, not to a third-party service.
- *
- * v0.1 implementation:
- *   - The pending_orphan_log is an in-memory Map. v0.2 will move
- *     it to a `pending_orphans` table in the metadata store
- *     (so it survives restarts). For v0.1, an ungraceful
- *     shutdown leaves a few orphans that `reconcile()` can
- *     clean up on next start (the in-memory log is gone, but
- *     the S3-vs-metadata drift is still detectable).
- *   - The compensate path: if the S3 write succeeds but the
- *     metadata insert fails, the S3 object is orphaned; we
- *     log it to `pendingOrphans` with a `delete` op so the
- *     next reconcile() deletes the S3 object. Conversely, if
- *     the S3 delete succeeds but the metadata soft-delete
- *     fails, we log a `restore` op (re-create the metadata row).
- *   - `reconcile()` is a no-op in v0.1 — it returns the current
- *     orphan log content for inspection but does not actually
- *     walk S3. v0.2 will add the S3 walk + the actual
- *     compensating actions.
- *
- * Idempotency: every method that touches both layers either
- * succeeds end-to-end or appends to the orphan log. Calling
- * writeThroughFile twice with the same key+body produces the
- * same end state (the second call is a no-op if the metadata
- * already exists; S3 handles dedup via the same key).
+ * Object keys are the node UUID. Rename/move stay metadata-only.
+ * Copy writes a new object under a new UUID.
  */
 import { ok, err, type Result } from "@/types/result";
 import { FileSystemError } from "@/errors";
-import { asS3Key, asTenantId, asUserId, type S3Key } from "@/types/branded";
+import { asS3Key, asTenantId, asUserId, type S3Key, type TenantId } from "@/types/branded";
 import type { FileSystem } from "../storage/filesystem";
 import type { MetadataStore, FileNode, CreateNodeInput } from "../metadata/store";
 
-// ---------------------------------------------------------------------------
-// Pending orphan log
-// ---------------------------------------------------------------------------
-
-/** The compensating action to take during reconcile(). */
 export type OrphanOp = "delete" | "restore";
 
 export interface PendingOrphan {
   readonly id: string;
-  readonly tenantId: string;
-  /** S3 key the orphan corresponds to. */
+  readonly tenantId: TenantId;
   readonly s3Key: S3Key;
-  /** What we need to do to fix this. */
   readonly op: OrphanOp;
-  /** When the orphan was recorded. */
   readonly createdAt: Date;
-  /** Original error that caused the orphan (for debugging). */
   readonly reason: string;
-  /** The metadata node that was being written/deleted (if any). */
   readonly nodeId?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Input / output shapes
-// ---------------------------------------------------------------------------
 
 export interface WriteThroughFileInput {
   readonly tenantId: string;
@@ -76,10 +29,9 @@ export interface WriteThroughFileInput {
   readonly body: Uint8Array | ReadableStream<Uint8Array>;
   readonly contentType: string;
   readonly metadata?: Readonly<Record<string, string>>;
-  /** Optional owner id; defaults to a placeholder if not provided. */
   readonly ownerId?: string;
-  /** Maximum body size; defaults to 5GB (the S3 single-PUT cap). */
   readonly maxBytes?: number;
+  readonly id?: string;
 }
 
 export interface DeleteThroughFileInput {
@@ -88,16 +40,66 @@ export interface DeleteThroughFileInput {
   readonly recursive?: boolean;
 }
 
+export interface CopyThroughFileInput {
+  readonly tenantId: string;
+  readonly id: string;
+  readonly newParentId: string | null;
+  readonly newName?: string;
+}
+
+export interface ConfirmUploadInput {
+  readonly tenantId: string;
+  readonly id: string;
+  readonly parentId: string | null;
+  readonly name: string;
+  readonly contentType?: string;
+  readonly size?: number;
+  readonly ownerId?: string;
+  readonly metadata?: Readonly<Record<string, string>>;
+}
+
 export interface ReconcileReport {
   readonly orphans: ReadonlyArray<PendingOrphan>;
   readonly scanned: number;
+  readonly missingInS3: ReadonlyArray<string>;
+  readonly orphansInS3: ReadonlyArray<string>;
+  readonly fixed: number;
 }
 
-// ---------------------------------------------------------------------------
-// WriteThrough
-// ---------------------------------------------------------------------------
+const bootedTenants = new Set<string>();
 
-const idFromKey = (s3Key: S3Key): string => `orphan-${s3Key}-${Date.now()}`;
+export const __resetDrainState = (): void => {
+  bootedTenants.clear();
+};
+
+const newId = (): string =>
+  typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `node-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const scopedFs = (fs: FileSystem, tenantId: string): FileSystem =>
+  fs.tenantId === tenantId ? fs : fs.forTenant(tenantId);
+
+const bodySize = (body: WriteThroughFileInput["body"]): number => {
+  const maybe = body as { byteLength?: number };
+  return typeof maybe.byteLength === "number" ? maybe.byteLength : 0;
+};
+
+const drainPendingOrphansFor = async (
+  fs: FileSystem,
+  store: MetadataStore,
+  tenantId: TenantId,
+): Promise<void> => {
+  if (bootedTenants.has(tenantId)) return;
+  bootedTenants.add(tenantId);
+  const result = await store.listPendingOrphans({ tenantId });
+  if (!result.ok) return;
+  const adapter = scopedFs(fs, tenantId).adapter;
+  for (const orphan of result.value) {
+    await adapter.delete({ key: asS3Key(orphan.s3Key) });
+    await store.deleteOrphan({ tenantId, id: orphan.id });
+  }
+};
 
 export const createWriteThrough = (
   fs: FileSystem,
@@ -109,45 +111,54 @@ export const createWriteThrough = (
   deleteThroughFile: (
     input: DeleteThroughFileInput,
   ) => Promise<Result<void, FileSystemError>>;
-  reconcile: () => Promise<Result<ReconcileReport, FileSystemError>>;
+  copyThroughFile: (
+    input: CopyThroughFileInput,
+  ) => Promise<Result<FileNode, FileSystemError>>;
+  confirmUpload: (
+    input: ConfirmUploadInput,
+  ) => Promise<Result<FileNode, FileSystemError>>;
+  reconcile: (input?: {
+    tenantId?: string;
+    dryRun?: boolean;
+  }) => Promise<Result<ReconcileReport, FileSystemError>>;
   getOrphans: () => ReadonlyArray<PendingOrphan>;
 } => {
-  // In-memory orphan log. v0.2 moves this to a metadata-store
-  // table so it survives restarts.
-  const orphans = new Map<string, PendingOrphan>();
-
-  const logOrphan = (o: PendingOrphan): void => {
-    orphans.set(o.id, o);
-  };
-
   const writeThroughFile = async (
     input: WriteThroughFileInput,
   ): Promise<Result<FileNode, FileSystemError>> => {
-    // Step 1: write the bytes to S3.
-    const s3Key = asS3Key(input.name); // simplified; v0.2 derives the key from the parent path
-    const w = await fs.adapter.write({
+    const tenantId = asTenantId(input.tenantId);
+    await drainPendingOrphansFor(fs, store, tenantId);
+    const adapter = scopedFs(fs, tenantId).adapter;
+    const id = input.id ?? newId();
+    const s3Key = asS3Key(id);
+    const calcSize = bodySize(input.body);
+
+    if (fs.quotaBytes != null) {
+      const used = await store.sumSize({ tenantId });
+      if (!used.ok) return used;
+      if (used.value + calcSize > fs.quotaBytes) {
+        return err(
+          new FileSystemError({
+            code: "QuotaExceeded",
+            message: `Tenant quota of ${fs.quotaBytes} bytes exceeded`,
+            retryable: false,
+          }),
+        );
+      }
+    }
+
+    const w = await adapter.write({
       key: s3Key,
       body: input.body,
       contentType: input.contentType,
       metadata: input.metadata,
     });
-    if (!w.ok) {
-      // S3 failed: nothing to compensate. Just surface the error.
-      return w;
-    }
+    if (!w.ok) return w;
 
-    // Step 2: create the metadata record. If this fails, the S3
-    // object is an orphan — log a `delete` op so reconcile()
-    // removes it.
     const ownerId = input.ownerId ? asUserId(input.ownerId) : asUserId("system");
-    // Duck-type the size: `instanceof Uint8Array` fails in Node ESM
-    // because the imported Uint8Array is from a different realm
-    // than the runtime one. ReadableStream has no `byteLength`,
-    // so checking for that property is a safe discriminator.
-    const body = input.body as { byteLength?: number };
-    const calcSize = typeof body.byteLength === "number" ? body.byteLength : 0;
     const createInput: CreateNodeInput = {
-      tenantId: asTenantId(input.tenantId),
+      id,
+      tenantId,
       parentId: input.parentId,
       name: input.name,
       kind: "file",
@@ -159,18 +170,21 @@ export const createWriteThrough = (
     };
     const c = await store.createNode(createInput);
     if (!c.ok) {
-      logOrphan({
-        id: idFromKey(s3Key),
-        tenantId: asTenantId(input.tenantId),
+      const enqueue = await store.enqueueOrphan({
+        tenantId,
         s3Key,
-        op: "delete",
-        createdAt: new Date(),
         reason: c.error.message,
       });
-      // Try the S3 delete so we don't leave the orphan in place.
-      // If this also fails, the orphan is logged; reconcile()
-      // will try again on next start.
-      await fs.adapter.delete({ key: s3Key });
+      if (!enqueue.ok) {
+        return err(
+          new FileSystemError({
+            code: "InternalError",
+            message: `S3 write succeeded, metadata insert failed, and orphan enqueue failed: ${enqueue.error.message}; original: ${c.error.message}`,
+            retryable: false,
+          }),
+        );
+      }
+      await adapter.delete({ key: s3Key });
       return err(
         new FileSystemError({
           code: "InternalError",
@@ -186,8 +200,11 @@ export const createWriteThrough = (
   const deleteThroughFile = async (
     input: DeleteThroughFileInput,
   ): Promise<Result<void, FileSystemError>> => {
-    // Step 1: look up the node so we have the S3 key.
-    const g = await store.getNode({ tenantId: asTenantId(input.tenantId), id: input.id });
+    const tenantId = asTenantId(input.tenantId);
+    await drainPendingOrphansFor(fs, store, tenantId);
+    const adapter = scopedFs(fs, tenantId).adapter;
+
+    const g = await store.getNode({ tenantId, id: input.id });
     if (!g.ok) return g;
     if (!g.value) {
       return err(
@@ -199,27 +216,17 @@ export const createWriteThrough = (
       );
     }
     const node = g.value;
-    const s3Key = asS3Key(node.s3Key);
-
-    // Step 2: soft-delete the metadata (the source of truth for
-    // the tree). If this fails, the S3 object is still live
-    // and the metadata still says the file exists — we'll log
-    // a `restore` op (NO-OP, just record the drift) so
-    // reconcile() can flag it.
     const d = await store.deleteNode({
-      tenantId: asTenantId(input.tenantId),
+      tenantId,
       id: input.id,
       recursive: input.recursive,
     });
     if (!d.ok) {
-      logOrphan({
-        id: `orphan-restore-${s3Key}-${Date.now()}`,
-        tenantId: asTenantId(input.tenantId),
-        s3Key,
-        op: "restore",
-        createdAt: new Date(),
+      await store.enqueueOrphan({
+        tenantId,
+        s3Key: asS3Key(node.s3Key || node.id),
+        metadataId: input.id,
         reason: d.error.message,
-        nodeId: input.id,
       });
       return err(
         new FileSystemError({
@@ -230,50 +237,178 @@ export const createWriteThrough = (
       );
     }
 
-    // Step 3: delete the S3 object. If this fails, the metadata
-    // says the file is gone but the bytes are still in the
-    // bucket — log a `delete` op so reconcile() removes the
-    // S3 object.
-    const del = await fs.adapter.delete({ key: s3Key });
-    if (!del.ok) {
-      logOrphan({
-        id: `orphan-delete-${s3Key}-${Date.now()}`,
-        tenantId: asTenantId(input.tenantId),
-        s3Key,
-        op: "delete",
-        createdAt: new Date(),
-        reason: del.error.message,
-        nodeId: input.id,
-      });
-      return err(
-        new FileSystemError({
-          code: "InternalError",
-          message: `Metadata deleted but S3 delete failed; orphan logged. Original: ${del.error.message}`,
-          retryable: false,
-        }),
-      );
+    if (node.kind === "file" && node.s3Key) {
+      const del = await adapter.delete({ key: asS3Key(node.s3Key) });
+      if (!del.ok) {
+        await store.enqueueOrphan({
+          tenantId,
+          s3Key: asS3Key(node.s3Key),
+          metadataId: input.id,
+          reason: del.error.message,
+        });
+        return err(
+          new FileSystemError({
+            code: "InternalError",
+            message: `Metadata deleted but S3 delete failed; orphan logged. Original: ${del.error.message}`,
+            retryable: false,
+          }),
+        );
+      }
     }
 
     return ok(undefined);
   };
 
-  const reconcile = async (): Promise<Result<ReconcileReport, FileSystemError>> => {
-    // v0.1: no-op. v0.2 will:
-    //   1. Walk the bucket via fs.adapter.list (paginated).
-    //   2. Compare against the store's nodes.
-    //   3. For each orphan in pendingOrphans, run the
-    //      compensating action (delete the S3 object, or
-    //      restore the metadata row).
-    //   4. For new drift found by the walk, also append to
-    //      the log.
-    // For v0.1 we just report the current log content.
-    return ok({ orphans: [...orphans.values()], scanned: orphans.size });
+  const copyThroughFile = async (
+    input: CopyThroughFileInput,
+  ): Promise<Result<FileNode, FileSystemError>> => {
+    const tenantId = asTenantId(input.tenantId);
+    await drainPendingOrphansFor(fs, store, tenantId);
+    const adapter = scopedFs(fs, tenantId).adapter;
+    const g = await store.getNode({ tenantId, id: input.id });
+    if (!g.ok) return g;
+    if (!g.value) {
+      return err(
+        new FileSystemError({
+          code: "NotFound",
+          message: `Node ${input.id} not found`,
+          retryable: false,
+        }),
+      );
+    }
+    const src = g.value;
+    const id = newId();
+    if (src.kind === "file" && src.s3Key) {
+      const copied = await adapter.copy({
+        sourceKey: asS3Key(src.s3Key),
+        destinationKey: asS3Key(id),
+      });
+      if (!copied.ok) return copied;
+    }
+    return store.createNode({
+      id,
+      tenantId,
+      parentId: input.newParentId,
+      name: input.newName ?? src.name,
+      kind: src.kind,
+      size: src.size,
+      mimeType: src.mimeType,
+      s3Key: src.kind === "file" ? id : "",
+      ownerId: src.ownerId,
+      metadata: src.metadata,
+    });
+  };
+
+  const confirmUpload = async (
+    input: ConfirmUploadInput,
+  ): Promise<Result<FileNode, FileSystemError>> => {
+    const tenantId = asTenantId(input.tenantId);
+    await drainPendingOrphansFor(fs, store, tenantId);
+    const adapter = scopedFs(fs, tenantId).adapter;
+    const existing = await store.findByS3Key({ tenantId, s3Key: input.id });
+    if (existing.ok && existing.value) return ok(existing.value);
+
+    const st = await adapter.stat({ key: asS3Key(input.id) });
+    const size = st.ok ? st.value.size : (input.size ?? 0);
+    const mimeType = input.contentType ?? (st.ok ? st.value.contentType : "");
+    if (!st.ok && input.size === undefined) return st;
+
+    if (fs.quotaBytes != null) {
+      const used = await store.sumSize({ tenantId });
+      if (!used.ok) return used;
+      if (used.value + size > fs.quotaBytes) {
+        return err(
+          new FileSystemError({
+            code: "QuotaExceeded",
+            message: `Tenant quota of ${fs.quotaBytes} bytes exceeded`,
+            retryable: false,
+          }),
+        );
+      }
+    }
+
+    return store.createNode({
+      id: input.id,
+      tenantId,
+      parentId: input.parentId,
+      name: input.name,
+      kind: "file",
+      size,
+      mimeType,
+      s3Key: input.id,
+      ownerId: input.ownerId ? asUserId(input.ownerId) : asUserId("system"),
+      metadata: input.metadata,
+    });
+  };
+
+  const reconcile = async (input?: {
+    tenantId?: string;
+    dryRun?: boolean;
+  }): Promise<Result<ReconcileReport, FileSystemError>> => {
+    if (!input?.tenantId) {
+      return ok({
+        orphans: [],
+        scanned: 0,
+        missingInS3: [],
+        orphansInS3: [],
+        fixed: 0,
+      });
+    }
+    const tenantId = asTenantId(input.tenantId);
+    const adapter = scopedFs(fs, tenantId).adapter;
+    const dryRun = input.dryRun === true;
+    let fixed = 0;
+
+    const pending = await store.listPendingOrphans({ tenantId });
+    if (!pending.ok) return pending;
+    if (!dryRun) {
+      for (const orphan of pending.value) {
+        await adapter.delete({ key: asS3Key(orphan.s3Key) });
+        const del = await store.deleteOrphan({ tenantId, id: orphan.id });
+        if (del.ok) fixed += 1;
+      }
+    }
+
+    const keys = await store.scanFileKeys({ tenantId });
+    if (!keys.ok) return keys;
+    const missingInS3: string[] = [];
+    for (const row of keys.value) {
+      const exists = await adapter.exists({ key: asS3Key(row.s3Key) });
+      if (exists.ok && !exists.value.exists) missingInS3.push(row.s3Key);
+    }
+
+    const listed = await adapter.list({ prefix: "" as never });
+    const orphansInS3: string[] = [];
+    if (listed.ok) {
+      const known = new Set(keys.value.map((k) => k.s3Key));
+      for (const item of listed.value.items) {
+        if (!known.has(item.key)) orphansInS3.push(item.key);
+      }
+    }
+
+    return ok({
+      orphans: pending.value.map((orphan) => ({
+        id: orphan.id,
+        tenantId: orphan.tenantId,
+        s3Key: orphan.s3Key,
+        op: "delete" as const,
+        createdAt: orphan.createdAt,
+        reason: orphan.reason,
+        nodeId: orphan.metadataId ?? undefined,
+      })),
+      scanned: keys.value.length,
+      missingInS3,
+      orphansInS3,
+      fixed,
+    });
   };
 
   return {
     writeThroughFile,
     deleteThroughFile,
+    copyThroughFile,
+    confirmUpload,
     reconcile,
-    getOrphans: () => [...orphans.values()],
+    getOrphans: () => [],
   };
 };

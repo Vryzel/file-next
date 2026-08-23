@@ -1,109 +1,111 @@
 /**
- * Server actions — the typed, validated surface that Next.js
- * server components and form actions call.
- *
- * The 5 actions are thin wrappers around the metadata store +
- * the write-through layer. They:
- *   - Validate inputs with Zod (the same schema the consumer
- *     can use for form validation)
- *   - Run the operation
- *   - Return \`Result<T, FileSystemError>\` (never throw — the
- *     RSC boundary serializes errors into a stable shape)
- *
- * Consumer pattern:
- *   \`\`\`ts
- *   // app/actions.ts
- *   'use server';
- *   import { listFilesAction } from 'file-next/server';
- *   export { listFilesAction };
- *   \`\`\`
- *
- * Each action is independent; the consumer can pick which to
- * expose. The \`serverOnly\` wrapper (added in the `server`
- * entry point) marks the whole module as server-only via
- * \`import "server-only"\` so a careless client import fails
- * the build.
- *
- * v0.1 scope:
- *   - All 5 actions implemented
- *   - Move/copy are METADATA-ONLY (the S3 bytes are not moved
- *     or copied by these actions). The S3 layer is the
- *     consumer's responsibility (call \`fs.adapter.move\` /
- *     \`copy\` separately). v0.2 adds S3-aware versions.
- *   - No withAuth composition: the consumer wraps the action
- *     with withAuth in their own code (the auth story is the
- *     consumer's choice of provider).
+ * Server actions — tenant comes from getAuth(), never from the client.
  */
 import { z } from "zod";
 import { ok, err, type Result } from "@/types/result";
 import { FileSystemError } from "@/errors";
-import { asTenantId, type TenantId } from "@/types/branded";
+import { asS3Key, asTenantId, type TenantId } from "@/types/branded";
+import type { AuthContext } from "../auth/with-auth";
 import type { MetadataStore, FileNode } from "../metadata/store";
+import type { FileSystem } from "../storage/filesystem";
 import type { createWriteThrough } from "../sync/write-through";
+
 type CreateWriteThrough = ReturnType<typeof createWriteThrough>;
 
-// ---------------------------------------------------------------------------
-// Zod schemas
-// ---------------------------------------------------------------------------
-
-const TenantIdSchema = z.string().min(1, "tenantId is required");
 const NodeIdSchema = z.string().min(1, "id is required");
-const PathSchema = z.string().nullable(); // null for root
+const PathSchema = z.string().nullable();
 
 export const ListFilesInputSchema = z.object({
-  tenantId: TenantIdSchema,
   parentId: PathSchema,
   limit: z.number().int().positive().optional(),
+  cursor: z.string().optional(),
 });
 
 export const DeleteFileInputSchema = z.object({
-  tenantId: TenantIdSchema,
   id: NodeIdSchema,
   recursive: z.boolean().optional(),
 });
 
 export const MoveFileInputSchema = z.object({
-  tenantId: TenantIdSchema,
   id: NodeIdSchema,
   newParentId: PathSchema,
   newName: z.string().min(1).optional(),
 });
 
 export const CopyFileInputSchema = z.object({
-  tenantId: TenantIdSchema,
   id: NodeIdSchema,
   newParentId: PathSchema,
   newName: z.string().min(1).optional(),
 });
 
 export const SetMetadataInputSchema = z.object({
-  tenantId: TenantIdSchema,
   id: NodeIdSchema,
   metadata: z.record(z.string()),
   replace: z.boolean().optional(),
 });
 
-// ---------------------------------------------------------------------------
-// Action factories
-//
-// Each action is a FUNCTION FACTORY that takes the store (and
-// writeThrough where needed) and returns the actual async
-// action. The factory pattern lets the consumer wire the
-// dependencies once at app init and re-use them per request.
-//
-//   const actions = createServerActions({ store, writeThrough });
-//   await actions.listFiles({ tenantId: 'acme', parentId: null });
-// ---------------------------------------------------------------------------
+export const CreateFolderInputSchema = z.object({
+  parentId: PathSchema,
+  name: z.string().min(1),
+});
+
+export const PrepareUploadInputSchema = z.object({
+  parentId: PathSchema,
+  name: z.string().min(1),
+  contentType: z.string().min(1),
+  contentLength: z.number().int().nonnegative(),
+});
+
+export const ConfirmUploadInputSchema = z.object({
+  id: NodeIdSchema,
+  parentId: PathSchema,
+  name: z.string().min(1),
+  contentType: z.string().optional(),
+  size: z.number().int().nonnegative().optional(),
+});
+
+export const SearchFilesInputSchema = z.object({
+  query: z.string(),
+  parentId: z.string().optional(),
+  limit: z.number().int().positive().optional(),
+});
+
+export const RestoreNodeInputSchema = z.object({
+  id: NodeIdSchema,
+});
+
+export const CreateShareInputSchema = z.object({
+  id: NodeIdSchema,
+});
+
+export const ResolveShareInputSchema = z.object({
+  token: z.string().min(1),
+});
+
+export const RevokeShareInputSchema = z.object({
+  token: z.string().min(1),
+});
+
+const zodErr = (message: string, parsed: z.SafeParseError<unknown>) =>
+  err(
+    new FileSystemError({
+      code: "InternalError",
+      message,
+      retryable: false,
+      cause: { code: "ZodError", message: parsed.error.message, issues: parsed.error.issues },
+    }),
+  );
 
 export interface ServerActionsDeps {
   readonly store: MetadataStore;
   readonly writeThrough: CreateWriteThrough;
+  readonly fs: FileSystem;
+  readonly getAuth: () => AuthContext | Promise<AuthContext>;
 }
 
 export const createServerActions = (deps: ServerActionsDeps) => {
-  const { store, writeThrough } = deps;
+  const { store, writeThrough, fs, getAuth } = deps;
 
-  // Helper: wrap a thrown error in a typed FileSystemError.
   const wrap = (e: unknown, code: FileSystemError["code"], message: string): FileSystemError => {
     if (e instanceof FileSystemError) return e;
     return new FileSystemError({
@@ -113,55 +115,35 @@ export const createServerActions = (deps: ServerActionsDeps) => {
     });
   };
 
-  // -------------------------------------------------------------------------
-  // listFilesAction — metadata-first (fast; no S3 call)
-  // -------------------------------------------------------------------------
-  const listFiles = async (input: z.infer<typeof ListFilesInputSchema>): Promise<Result<ListFilesOutput, FileSystemError>> => {
+  const authTenant = async (): Promise<AuthContext> => getAuth();
+
+  const listFiles = async (
+    input: z.infer<typeof ListFilesInputSchema>,
+  ): Promise<Result<ListFilesOutput, FileSystemError>> => {
     const parsed = ListFilesInputSchema.safeParse(input);
-    if (!parsed.success) {
-      return err(
-        new FileSystemError({
-          code: "InternalError",
-          message: "Invalid listFiles input",
-          retryable: false,
-          cause: { code: "ZodError", message: parsed.error.message, issues: parsed.error.issues },
-        }),
-      );
-    }
+    if (!parsed.success) return zodErr("Invalid listFiles input", parsed);
     try {
-      const r = await store.listChildren({
-        tenantId: asTenantId(parsed.data.tenantId),
+      const auth = await authTenant();
+      return store.listChildren({
+        tenantId: asTenantId(auth.tenantId),
         parentId: parsed.data.parentId,
         limit: parsed.data.limit,
-      });
-      if (!r.ok) return r;
-      return ok({
-        items: r.value.items,
-        nextCursor: r.value.nextCursor,
+        cursor: parsed.data.cursor,
       });
     } catch (e) {
       return err(wrap(e, "InternalError", "listFiles failed"));
     }
   };
 
-  // -------------------------------------------------------------------------
-  // deleteFileAction — cascades metadata + S3
-  // -------------------------------------------------------------------------
-  const deleteFile = async (input: z.infer<typeof DeleteFileInputSchema>): Promise<Result<void, FileSystemError>> => {
+  const deleteFile = async (
+    input: z.infer<typeof DeleteFileInputSchema>,
+  ): Promise<Result<void, FileSystemError>> => {
     const parsed = DeleteFileInputSchema.safeParse(input);
-    if (!parsed.success) {
-      return err(
-        new FileSystemError({
-          code: "InternalError",
-          message: "Invalid deleteFile input",
-          retryable: false,
-          cause: { code: "ZodError", message: parsed.error.message, issues: parsed.error.issues },
-        }),
-      );
-    }
+    if (!parsed.success) return zodErr("Invalid deleteFile input", parsed);
     try {
-      return await writeThrough.deleteThroughFile({
-        tenantId: parsed.data.tenantId,
+      const auth = await authTenant();
+      return writeThrough.deleteThroughFile({
+        tenantId: auth.tenantId,
         id: parsed.data.id,
         recursive: parsed.data.recursive,
       });
@@ -170,26 +152,15 @@ export const createServerActions = (deps: ServerActionsDeps) => {
     }
   };
 
-  // -------------------------------------------------------------------------
-  // moveFileAction — metadata-only in v0.1; the consumer must
-  // call fs.adapter.move/copy separately for the S3 bytes.
-  // v0.2 adds an S3-aware version (use writeThrough).
-  // -------------------------------------------------------------------------
-  const moveFile = async (input: z.infer<typeof MoveFileInputSchema>): Promise<Result<FileNode, FileSystemError>> => {
+  const moveFile = async (
+    input: z.infer<typeof MoveFileInputSchema>,
+  ): Promise<Result<FileNode, FileSystemError>> => {
     const parsed = MoveFileInputSchema.safeParse(input);
-    if (!parsed.success) {
-      return err(
-        new FileSystemError({
-          code: "InternalError",
-          message: "Invalid moveFile input",
-          retryable: false,
-          cause: { code: "ZodError", message: parsed.error.message, issues: parsed.error.issues },
-        }),
-      );
-    }
+    if (!parsed.success) return zodErr("Invalid moveFile input", parsed);
     try {
-      return await store.moveNode({
-        tenantId: asTenantId(parsed.data.tenantId),
+      const auth = await authTenant();
+      return store.moveNode({
+        tenantId: asTenantId(auth.tenantId),
         id: parsed.data.id,
         newParentId: parsed.data.newParentId,
         newName: parsed.data.newName,
@@ -199,74 +170,33 @@ export const createServerActions = (deps: ServerActionsDeps) => {
     }
   };
 
-  // -------------------------------------------------------------------------
-  // copyFileAction — creates a new metadata node referencing
-  // the SAME s3Key. v0.1 does NOT duplicate the S3 bytes (the
-  // consumer can use fs.adapter.copy for that). v0.2 adds
-  // an S3-aware version that does copy + create.
-  // -------------------------------------------------------------------------
-  const copyFile = async (input: z.infer<typeof CopyFileInputSchema>): Promise<Result<FileNode, FileSystemError>> => {
+  const copyFile = async (
+    input: z.infer<typeof CopyFileInputSchema>,
+  ): Promise<Result<FileNode, FileSystemError>> => {
     const parsed = CopyFileInputSchema.safeParse(input);
-    if (!parsed.success) {
-      return err(
-        new FileSystemError({
-          code: "InternalError",
-          message: "Invalid copyFile input",
-          retryable: false,
-          cause: { code: "ZodError", message: parsed.error.message, issues: parsed.error.issues },
-        }),
-      );
-    }
+    if (!parsed.success) return zodErr("Invalid copyFile input", parsed);
     try {
-      // Get the source node
-      const g = await store.getNode({ tenantId: asTenantId(parsed.data.tenantId), id: parsed.data.id });
-      if (!g.ok) return g;
-      if (!g.value) {
-        return err(
-          new FileSystemError({
-            code: "NotFound",
-            message: `Node ${parsed.data.id} not found`,
-            retryable: false,
-          }),
-        );
-      }
-      const src = g.value;
-      // Create a new node referencing the same s3Key + metadata
-      const created = await store.createNode({
-        tenantId: asTenantId(parsed.data.tenantId),
-        parentId: parsed.data.newParentId,
-        name: parsed.data.newName ?? src.name,
-        kind: src.kind,
-        size: src.size,
-        mimeType: src.mimeType,
-        s3Key: src.s3Key, // share the S3 object
-        ownerId: src.ownerId,
-        metadata: src.metadata,
+      const auth = await authTenant();
+      return writeThrough.copyThroughFile({
+        tenantId: auth.tenantId,
+        id: parsed.data.id,
+        newParentId: parsed.data.newParentId,
+        newName: parsed.data.newName,
       });
-      return created;
     } catch (e) {
       return err(wrap(e, "InternalError", "copyFile failed"));
     }
   };
 
-  // -------------------------------------------------------------------------
-  // setMetadataAction — store.updateMetadata
-  // -------------------------------------------------------------------------
-  const setMetadata = async (input: z.infer<typeof SetMetadataInputSchema>): Promise<Result<FileNode, FileSystemError>> => {
+  const setMetadata = async (
+    input: z.infer<typeof SetMetadataInputSchema>,
+  ): Promise<Result<FileNode, FileSystemError>> => {
     const parsed = SetMetadataInputSchema.safeParse(input);
-    if (!parsed.success) {
-      return err(
-        new FileSystemError({
-          code: "InternalError",
-          message: "Invalid setMetadata input",
-          retryable: false,
-          cause: { code: "ZodError", message: parsed.error.message, issues: parsed.error.issues },
-        }),
-      );
-    }
+    if (!parsed.success) return zodErr("Invalid setMetadata input", parsed);
     try {
-      return await store.updateMetadata({
-        tenantId: asTenantId(parsed.data.tenantId),
+      const auth = await authTenant();
+      return store.updateMetadata({
+        tenantId: asTenantId(auth.tenantId),
         id: parsed.data.id,
         metadata: parsed.data.metadata,
         replace: parsed.data.replace,
@@ -276,14 +206,202 @@ export const createServerActions = (deps: ServerActionsDeps) => {
     }
   };
 
-  return { listFiles, deleteFile, moveFile, copyFile, setMetadata };
-};
+  const createFolder = async (
+    input: z.infer<typeof CreateFolderInputSchema>,
+  ): Promise<Result<FileNode, FileSystemError>> => {
+    const parsed = CreateFolderInputSchema.safeParse(input);
+    if (!parsed.success) return zodErr("Invalid createFolder input", parsed);
+    try {
+      const auth = await authTenant();
+      return store.createNode({
+        tenantId: asTenantId(auth.tenantId),
+        parentId: parsed.data.parentId,
+        name: parsed.data.name,
+        kind: "folder",
+        size: 0,
+        mimeType: "",
+        s3Key: "",
+        ownerId: auth.userId,
+      });
+    } catch (e) {
+      return err(wrap(e, "InternalError", "createFolder failed"));
+    }
+  };
 
-// ---------------------------------------------------------------------------
-// Output types
-// ---------------------------------------------------------------------------
+  const prepareUpload = async (
+    input: z.infer<typeof PrepareUploadInputSchema>,
+  ): Promise<Result<PrepareUploadOutput, FileSystemError>> => {
+    const parsed = PrepareUploadInputSchema.safeParse(input);
+    if (!parsed.success) return zodErr("Invalid prepareUpload input", parsed);
+    try {
+      const auth = await authTenant();
+      const id =
+        typeof globalThis.crypto?.randomUUID === "function"
+          ? globalThis.crypto.randomUUID()
+          : `upl-${Date.now()}`;
+      const signed = await fs.forTenant(auth.tenantId).adapter.createPresignedUploadUrl({
+        key: asS3Key(id),
+        contentType: parsed.data.contentType,
+        expiresIn: 900,
+      });
+      if (!signed.ok) return signed;
+      return ok({
+        id,
+        key: id,
+        url: signed.value.url,
+        method: signed.value.method,
+        headers: signed.value.requiredHeaders ?? {},
+        expiresAt: new Date(Date.now() + 900_000).toISOString(),
+      });
+    } catch (e) {
+      return err(wrap(e, "InternalError", "prepareUpload failed"));
+    }
+  };
+
+  const confirmUpload = async (
+    input: z.infer<typeof ConfirmUploadInputSchema>,
+  ): Promise<Result<FileNode, FileSystemError>> => {
+    const parsed = ConfirmUploadInputSchema.safeParse(input);
+    if (!parsed.success) return zodErr("Invalid confirmUpload input", parsed);
+    try {
+      const auth = await authTenant();
+      return writeThrough.confirmUpload({
+        tenantId: auth.tenantId,
+        id: parsed.data.id,
+        parentId: parsed.data.parentId,
+        name: parsed.data.name,
+        contentType: parsed.data.contentType,
+        size: parsed.data.size,
+        ownerId: auth.userId,
+      });
+    } catch (e) {
+      return err(wrap(e, "InternalError", "confirmUpload failed"));
+    }
+  };
+
+  const searchFiles = async (
+    input: z.infer<typeof SearchFilesInputSchema>,
+  ): Promise<Result<ListFilesOutput, FileSystemError>> => {
+    const parsed = SearchFilesInputSchema.safeParse(input);
+    if (!parsed.success) return zodErr("Invalid searchFiles input", parsed);
+    try {
+      const auth = await authTenant();
+      return store.search({
+        tenantId: asTenantId(auth.tenantId),
+        query: parsed.data.query,
+        parentId: parsed.data.parentId,
+        limit: parsed.data.limit,
+      });
+    } catch (e) {
+      return err(wrap(e, "InternalError", "searchFiles failed"));
+    }
+  };
+
+  const listTrash = async (
+    input: { limit?: number; cursor?: string } = {},
+  ): Promise<Result<ListFilesOutput, FileSystemError>> => {
+    try {
+      const auth = await authTenant();
+      return store.listTrash({
+        tenantId: asTenantId(auth.tenantId),
+        limit: input.limit,
+        cursor: input.cursor,
+      });
+    } catch (e) {
+      return err(wrap(e, "InternalError", "listTrash failed"));
+    }
+  };
+
+  const restoreNode = async (
+    input: z.infer<typeof RestoreNodeInputSchema>,
+  ): Promise<Result<FileNode, FileSystemError>> => {
+    const parsed = RestoreNodeInputSchema.safeParse(input);
+    if (!parsed.success) return zodErr("Invalid restoreNode input", parsed);
+    try {
+      const auth = await authTenant();
+      return store.restoreNode({
+        tenantId: asTenantId(auth.tenantId),
+        id: parsed.data.id,
+      });
+    } catch (e) {
+      return err(wrap(e, "InternalError", "restoreNode failed"));
+    }
+  };
+
+  const createShare = async (
+    input: z.infer<typeof CreateShareInputSchema>,
+  ): Promise<Result<{ token: string }, FileSystemError>> => {
+    const parsed = CreateShareInputSchema.safeParse(input);
+    if (!parsed.success) return zodErr("Invalid createShare input", parsed);
+    try {
+      const auth = await authTenant();
+      return store.createShare({
+        tenantId: asTenantId(auth.tenantId),
+        nodeId: parsed.data.id,
+      });
+    } catch (e) {
+      return err(wrap(e, "InternalError", "createShare failed"));
+    }
+  };
+
+  const resolveShare = async (
+    input: z.infer<typeof ResolveShareInputSchema>,
+  ): Promise<Result<FileNode | null, FileSystemError>> => {
+    const parsed = ResolveShareInputSchema.safeParse(input);
+    if (!parsed.success) return zodErr("Invalid resolveShare input", parsed);
+    try {
+      return store.resolveShare({ token: parsed.data.token });
+    } catch (e) {
+      return err(wrap(e, "InternalError", "resolveShare failed"));
+    }
+  };
+
+  const revokeShare = async (
+    input: z.infer<typeof RevokeShareInputSchema>,
+  ): Promise<Result<void, FileSystemError>> => {
+    const parsed = RevokeShareInputSchema.safeParse(input);
+    if (!parsed.success) return zodErr("Invalid revokeShare input", parsed);
+    try {
+      const auth = await authTenant();
+      return store.revokeShare({
+        tenantId: asTenantId(auth.tenantId),
+        token: parsed.data.token,
+      });
+    } catch (e) {
+      return err(wrap(e, "InternalError", "revokeShare failed"));
+    }
+  };
+
+  return {
+    listFiles,
+    deleteFile,
+    moveFile,
+    copyFile,
+    setMetadata,
+    createFolder,
+    prepareUpload,
+    confirmUpload,
+    searchFiles,
+    listTrash,
+    restoreNode,
+    createShare,
+    resolveShare,
+    revokeShare,
+  };
+};
 
 export interface ListFilesOutput {
   readonly items: ReadonlyArray<FileNode>;
   readonly nextCursor?: string;
 }
+
+export interface PrepareUploadOutput {
+  readonly id: string;
+  readonly key: string;
+  readonly url: string;
+  readonly method: "PUT" | "POST";
+  readonly headers: Record<string, string>;
+  readonly expiresAt: string;
+}
+
+export type { TenantId };

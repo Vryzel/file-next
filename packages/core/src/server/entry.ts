@@ -25,6 +25,7 @@ export {
 export type {
   ServerActionsDeps,
   ListFilesOutput,
+  PrepareUploadOutput,
   CreateUploadRouteHandlerOptions,
   UploadRouteHandlerRequest,
   UploadRouteHandlerResult,

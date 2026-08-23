@@ -23,3 +23,11 @@ export type {
   UpdateMetadataInput,
 } from "./store";
 export { createMemoryStore } from "./memory-store";
+export {
+  createSqliteStore,
+  type SqliteStoreOptions,
+} from "./sqlite-store";
+export {
+  createPostgresStore,
+  type PostgresStoreOptions,
+} from "./postgres-store";

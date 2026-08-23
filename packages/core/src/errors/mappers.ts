@@ -63,6 +63,8 @@ const HTTP_STATUS_TO_CODE: Readonly<Record<number, CodeMapping>> = {
 const AWS_NAME_TO_CODE: Readonly<Record<string, CodeMapping>> = {
   NoSuchKey: { code: "NotFound", retryable: false },
   NoSuchBucket: { code: "NotFound", retryable: false },
+  // v0.2 multipart: unknown/aborted/expired uploadId.
+  NoSuchUpload: { code: "NotFound", retryable: false },
   AccessDenied: { code: "Forbidden", retryable: false },
   SlowDown: { code: "QuotaExceeded", retryable: true },
   BadDigest: { code: "ChecksumMismatch", retryable: true },

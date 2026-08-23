@@ -2,7 +2,7 @@
  * `createS3Adapter` — the factory that turns a validated
  * `FileSystemConfig` into a fully-shaped `S3CompatibleAdapter`.
  *
- * The 13 methods are wired as thin delegations to the per-method
+ * The 17 methods are wired as thin delegations to the per-method
  * helpers in the same directory. Each helper is independently
  * testable (one test file per method) and shares the S3Client
  * + the error-mapping via `fromAws`.
@@ -33,8 +33,15 @@ import {
   createPresignedDownloadUrl,
 } from "./presigned";
 import { getPublicUrl } from "./get-public-url";
+import {
+  createMultipartUpload,
+  uploadPart,
+  completeMultipartUpload,
+  abortMultipartUpload,
+} from "./multipart";
 
 export { MAX_SINGLE_PUT_SIZE };
+export { MULTIPART_PART_SIZE } from "./write";
 
 /**
  * Build a `S3CompatibleAdapter` from a `FileSystemConfig`. The
@@ -58,6 +65,10 @@ export const createS3Adapter = (
   createPresignedUploadUrl: (input) => createPresignedUploadUrl(client, config, input),
   createPresignedDownloadUrl: (input) => createPresignedDownloadUrl(client, config, input),
   getPublicUrl: (input) => getPublicUrl(client, config, input),
+  createMultipartUpload: (input) => createMultipartUpload(client, config, input),
+  uploadPart: (input) => uploadPart(client, config, input),
+  completeMultipartUpload: (input) => completeMultipartUpload(client, config, input),
+  abortMultipartUpload: (input) => abortMultipartUpload(client, config, input),
 });
 
 // Re-exports for tests and downstream consumers who want to call
@@ -77,4 +88,10 @@ export {
   createPresignedDownloadUrl,
 } from "./presigned";
 export { getPublicUrl } from "./get-public-url";
+export {
+  createMultipartUpload,
+  uploadPart,
+  completeMultipartUpload,
+  abortMultipartUpload,
+} from "./multipart";
 export { createS3Client } from "./client";

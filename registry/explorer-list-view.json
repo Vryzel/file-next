@@ -1,0 +1,16 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "explorer-list-view",
+  "type": "registry:component",
+  "title": "Explorer List View",
+  "description": "Table view for the file explorer with sortable columns (Name, Size, Modified, Kind). Drag-drop and right-click enabled.",
+  "categories": ["files", "display"],
+  "dependencies": ["lucide-react"],
+  "files": [
+    {
+      "path": "registry/components/file-next/explorer-list-view.tsx",
+      "type": "registry:component",
+      "target": "@components/file-next/explorer-list-view.tsx"
+    }
+  ]
+}

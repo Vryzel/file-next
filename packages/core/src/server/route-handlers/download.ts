@@ -17,7 +17,9 @@
  * handler fails fast at server startup.
  */
 import { FileSystemError } from "@/errors";
+import { asS3Key } from "@/types/branded";
 import type { FileSystem } from "@/storage/filesystem";
+import type { AuthContext } from "../../auth/with-auth";
 
 /** S3 SigV4 presign hard cap. The SDK itself rejects anything longer. */
 const MAX_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
@@ -26,6 +28,7 @@ const DEFAULT_EXPIRES_IN_SECONDS = 900;
 
 export interface CreateDownloadRouteHandlerOptions {
   readonly fs: FileSystem;
+  readonly getAuth?: (req: Request) => Promise<AuthContext | null>;
   /** Presigned URL lifetime in seconds. Default 900, max 7d (S3 SigV4). */
   readonly expiresIn?: number;
 }
@@ -76,8 +79,20 @@ export const createDownloadRouteHandler = (
       );
     }
 
-    const r = await opts.fs.adapter.createPresignedDownloadUrl({
-      key: key as never,
+    let fs = opts.fs;
+    if (opts.getAuth) {
+      const auth = await opts.getAuth(req);
+      if (!auth) {
+        return Response.json(
+          { ok: false, error: { code: "Unauthorized", message: "Not authenticated" } },
+          { status: 401 },
+        );
+      }
+      fs = opts.fs.forTenant(auth.tenantId);
+    }
+
+    const r = await fs.adapter.createPresignedDownloadUrl({
+      key: asS3Key(key),
       expiresIn,
     });
     if (!r.ok) {

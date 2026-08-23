@@ -1,5 +1,6 @@
 {
   "name": "file-next",
+  "private": true,
   "version": "0.0.0",
   "description": "File-system abstraction over AWS S3 / Cloudflare R2 for Next.js, with ready-to-use shadcn/ui components.",
   "type": "module",
@@ -30,19 +31,21 @@
     "@radix-ui/react-label": "^2.1.0",
     "@radix-ui/react-progress": "^1.1.0",
     "@radix-ui/react-slot": "^1.1.0",
+    "better-sqlite3": "^11.3.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.460.0",
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
-    "@aws-sdk/client-s3": "^3.700.0",
-    "@aws-sdk/s3-request-presigner": "^3.700.0",
     "@radix-ui/react-alert-dialog": "^1.1.17",
+    "@radix-ui/react-context-menu": "^2.3.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@testing-library/user-event": "^14.6.1",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.9.0",
+    "@types/pg": "^8.20.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
@@ -58,6 +61,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tsup": "^8.3.5",
     "typescript": "^5.6.3",
+    "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^2.1.5",
     "yaml": "^2.9.0"
   },
