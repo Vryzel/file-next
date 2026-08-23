@@ -1,6 +1,6 @@
 {
   "name": "file-next",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "File-system abstraction over AWS S3 / Cloudflare R2 for Next.js, with a secondary metadata index and shadcn/ui components.",
   "type": "module",
   "license": "MIT",

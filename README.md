@@ -30,7 +30,7 @@ const actions = createServerActions({ store, writeThrough, fs, getAuth });
 export const listFiles = actions.listFiles;
 
 # 4. Copy the explorer into your app
-npx shadcn@2.1.0 add https://raw.githubusercontent.com/Vryzel/file-next/feat/close-product-spine/registry/file-explorer.json
+npx shadcn@2.1.0 add https://raw.githubusercontent.com/Vryzel/file-next/main/registry/file-explorer.json
 ```
 
 That's it — you have a file browser, uploader, and server actions in 5 minutes.

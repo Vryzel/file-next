@@ -1,5 +1,6 @@
 {
   "name": "file-next",
+  "private": true,
   "version": "0.0.0",
   "description": "File-system abstraction over AWS S3 / Cloudflare R2 for Next.js, with ready-to-use shadcn/ui components.",
   "type": "module",

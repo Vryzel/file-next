@@ -1,6 +1,6 @@
 {
   "name": "@file-next/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI for file-next — migrate metadata schemas, reconcile drift between S3 and the metadata index, and diagnose environment / connectivity issues.",
   "type": "module",
   "license": "MIT",
