@@ -26,6 +26,21 @@ describe("createMemoryFileSystem + forTenant", () => {
     expect(other.ok && other.value.exists).toBe(false);
   });
 
+  it("prefixTenantKeys: false leaves keys unprefixed", async () => {
+    const store = createMemoryStore();
+    const fs = createMemoryFileSystem({ store, prefixTenantKeys: false });
+    const key = asS3Key("node-1");
+    await fs.forTenant("acme").adapter.write({
+      key,
+      body: new TextEncoder().encode("hi"),
+      contentType: "text/plain",
+    });
+    const atRoot = await fs.adapter.exists({ key });
+    expect(atRoot.ok && atRoot.value.exists).toBe(true);
+    const prefixed = await fs.adapter.exists({ key: asS3Key("t/acme/node-1") });
+    expect(prefixed.ok && prefixed.value.exists).toBe(false);
+  });
+
   it("wires the metadata store onto FileSystem", () => {
     const store = createMemoryStore();
     const fs = createMemoryFileSystem({ store, quotaBytes: 100 });

@@ -14,6 +14,35 @@
 
 Upload and download route handlers generate the object id on the server. Do not sign a client-supplied key.
 
+## Tenant isolation (one bucket)
+
+Default: `forTenant(id)` writes to `t/{id}/{nodeId}` in the **same** bucket. The metadata store filters every query by `tenantId`. Postgres can add RLS.
+
+That is enough for a normal SaaS **if** the IAM cannot list/get the whole bucket:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:HeadObject"],
+  "Resource": "arn:aws:s3:::your-bucket/t/*"
+}
+```
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:ListBucket"],
+  "Resource": "arn:aws:s3:::your-bucket",
+  "Condition": { "StringLike": { "s3:prefix": ["t/*"] } }
+}
+```
+
+On R2, scope the API token to prefix `t/` (or the whole bucket if the token is server-only and never leaves the process).
+
+`prefixTenantKeys: false` is only for a single-tenant bucket or a token that cannot write under `t/`. Do not ship a multi-tenant product that way.
+
+A **bucket per tenant** is a separate `createFileSystem({ bucket })` — use it when a customer requires their own encryption key or offboarding by deleting the bucket.
+
 ## CORS for browser-direct uploads
 
 Presigned uploads are `PUT`. Configure the bucket:
