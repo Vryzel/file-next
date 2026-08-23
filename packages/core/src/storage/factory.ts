@@ -24,8 +24,9 @@ const assemble = (
   config: FileSystemConfig,
   options: CreateFileSystemOptions | undefined,
 ): FileSystem => {
+  const prefixKeys = options?.prefixTenantKeys !== false;
   const forTenant = (tenantId: string): FileSystem => ({
-    adapter: prefixAdapter(adapter, tenantPrefix(tenantId)),
+    adapter: prefixKeys ? prefixAdapter(adapter, tenantPrefix(tenantId)) : adapter,
     config,
     metadata: options?.store,
     tenantId,

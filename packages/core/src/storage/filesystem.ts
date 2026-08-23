@@ -20,4 +20,10 @@ export interface FileSystem {
 export interface CreateFileSystemOptions {
   readonly store?: MetadataStore;
   readonly quotaBytes?: number;
+  /**
+   * When true (default), `forTenant(id)` prefixes object keys with
+   * `t/{id}/`. Set false for a single-tenant bucket or an R2 token
+   * scoped to the bucket root.
+   */
+  readonly prefixTenantKeys?: boolean;
 }

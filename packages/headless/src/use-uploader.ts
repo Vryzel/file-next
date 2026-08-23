@@ -159,12 +159,21 @@ export function useUploader(options: UseUploaderOptions): UseUploaderReturn {
         if (xhrRef.current !== xhr || canceledRef.current) return;
         xhrRef.current = null;
         if (xhr.status < 200 || xhr.status >= 300) {
+          let message = `Upload failed (${xhr.status})`;
+          try {
+            const parsed = JSON.parse(xhr.responseText) as {
+              error?: { message?: string };
+            };
+            if (parsed.error?.message) message = parsed.error.message;
+          } catch {
+            /* keep status fallback */
+          }
           dispatch({
             type: "UPLOAD_ERROR",
             error: new FileSystemError({
               code: "NetworkError",
               retryable: true,
-              message: `Upload failed (${xhr.status})`,
+              message,
               cause: { code: "HttpError", message: `status ${xhr.status}` },
             }),
           });
