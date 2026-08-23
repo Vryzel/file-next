@@ -61,6 +61,7 @@ export const ConfirmUploadInputSchema = z.object({
   parentId: PathSchema,
   name: z.string().min(1),
   contentType: z.string().optional(),
+  size: z.number().int().nonnegative().optional(),
 });
 
 export const SearchFilesInputSchema = z.object({
@@ -270,6 +271,7 @@ export const createServerActions = (deps: ServerActionsDeps) => {
         parentId: parsed.data.parentId,
         name: parsed.data.name,
         contentType: parsed.data.contentType,
+        size: parsed.data.size,
         ownerId: auth.userId,
       });
     } catch (e) {

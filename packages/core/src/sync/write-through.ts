@@ -53,6 +53,7 @@ export interface ConfirmUploadInput {
   readonly parentId: string | null;
   readonly name: string;
   readonly contentType?: string;
+  readonly size?: number;
   readonly ownerId?: string;
   readonly metadata?: Readonly<Record<string, string>>;
 }
@@ -308,12 +309,14 @@ export const createWriteThrough = (
     if (existing.ok && existing.value) return ok(existing.value);
 
     const st = await adapter.stat({ key: asS3Key(input.id) });
-    if (!st.ok) return st;
+    const size = st.ok ? st.value.size : (input.size ?? 0);
+    const mimeType = input.contentType ?? (st.ok ? st.value.contentType : "");
+    if (!st.ok && input.size === undefined) return st;
 
     if (fs.quotaBytes != null) {
       const used = await store.sumSize({ tenantId });
       if (!used.ok) return used;
-      if (used.value + st.value.size > fs.quotaBytes) {
+      if (used.value + size > fs.quotaBytes) {
         return err(
           new FileSystemError({
             code: "QuotaExceeded",
@@ -330,8 +333,8 @@ export const createWriteThrough = (
       parentId: input.parentId,
       name: input.name,
       kind: "file",
-      size: st.value.size,
-      mimeType: input.contentType ?? st.value.contentType,
+      size,
+      mimeType,
       s3Key: input.id,
       ownerId: input.ownerId ? asUserId(input.ownerId) : asUserId("system"),
       metadata: input.metadata,

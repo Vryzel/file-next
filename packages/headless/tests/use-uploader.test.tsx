@@ -35,6 +35,7 @@ class StubXHR {
   public headers: Record<string, string> = {};
   public body: unknown = null;
   public aborted = false;
+  public status = 200;
 
   private progressListener: ProgressListener | null = null;
   private loadListener: LoadListener | null = null;

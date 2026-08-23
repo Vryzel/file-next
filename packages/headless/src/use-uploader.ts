@@ -158,8 +158,31 @@ export function useUploader(options: UseUploaderOptions): UseUploaderReturn {
       xhr.addEventListener("load", () => {
         if (xhrRef.current !== xhr || canceledRef.current) return;
         xhrRef.current = null;
+        if (xhr.status < 200 || xhr.status >= 300) {
+          dispatch({
+            type: "UPLOAD_ERROR",
+            error: new FileSystemError({
+              code: "NetworkError",
+              retryable: true,
+              message: `Upload failed (${xhr.status})`,
+              cause: { code: "HttpError", message: `status ${xhr.status}` },
+            }),
+          });
+          return;
+        }
         dispatch({ type: "UPLOAD_SUCCESS" });
-        confirmUpload?.(xhr, file, { id: target.id });
+        void Promise.resolve(confirmUpload?.(xhr, file, { id: target.id })).catch(
+          (error: unknown) => {
+            dispatch({
+              type: "UPLOAD_ERROR",
+              error: new FileSystemError({
+                code: "InternalError",
+                retryable: false,
+                message: error instanceof Error ? error.message : "confirmUpload failed",
+              }),
+            });
+          },
+        );
       });
 
       xhr.addEventListener("error", () => {

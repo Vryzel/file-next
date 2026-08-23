@@ -373,6 +373,11 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
             >
               {uploader.status === "uploading" ? `${uploader.progress}%` : "Upload"}
             </button>
+            {uploader.error ? (
+              <span className="max-w-48 truncate text-xs text-destructive" title={uploader.error.message}>
+                {uploader.error.message}
+              </span>
+            ) : null}
           </>
         ) : null}
         <ExplorerToolbar
