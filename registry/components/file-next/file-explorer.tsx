@@ -105,6 +105,10 @@ export interface FileExplorerProps {
   readonly searchFiles?: OverlayQuery;
   readonly listTrash?: OverlayQuery;
   readonly requestUpload?: (file: UploaderFile) => Promise<RequestUploadResult>;
+  readonly confirmUpload?: (
+    file: UploaderFile,
+    meta?: { id?: string },
+  ) => Promise<void> | void;
   readonly usedBytes?: number;
   readonly quotaBytes?: number;
   readonly onMove?: (input: {
@@ -169,6 +173,7 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
     searchFiles,
     listTrash,
     requestUpload,
+    confirmUpload,
     usedBytes,
     quotaBytes,
     onMove = () => undefined,
@@ -192,7 +197,8 @@ export function FileExplorer(props: FileExplorerProps): React.ReactElement {
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const uploader = useUploader({
     requestUpload,
-    confirmUpload: () => {
+    confirmUpload: async (_xhr, file, meta) => {
+      await confirmUpload?.(file, meta);
       void explorer.refetch();
     },
   });
