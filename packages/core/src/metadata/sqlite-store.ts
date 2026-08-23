@@ -56,6 +56,8 @@
  * change the MetadataStore interface. Tracked for v0.3.
  */
 import { createRequire } from "node:module";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { Database as BetterSqliteDatabase } from "better-sqlite3";
 
 /**
@@ -290,6 +292,23 @@ const runMigrations = (db: BetterSqliteDatabase): void => {
 // Factory
 // ---------------------------------------------------------------------------
 
+const loadBetterSqlite = (): BetterSqlite3Module => {
+  const origins = [import.meta.url, pathToFileURL(join(process.cwd(), "package.json")).href];
+  const errors: string[] = [];
+  for (const origin of origins) {
+    try {
+      return createRequire(origin)("better-sqlite3") as BetterSqlite3Module;
+    } catch (error) {
+      errors.push(`${origin}: ${(error as Error).message}`);
+    }
+  }
+  throw new FileSystemError({
+    code: "InternalError",
+    message: `better-sqlite3 is not installed or its native binding is missing. ${errors.join(" | ")}`,
+    retryable: false,
+  });
+};
+
 export const createSqliteStore = (
   options: SqliteStoreOptions,
 ): MetadataStore => {
@@ -307,9 +326,8 @@ export const createSqliteStore = (
       pending = (async () => {
         // createRequire gives us a real require() call that
         // webpack/turbopack leave alone (treated as a runtime call).
-        const req = createRequire(import.meta.url);
-      const mod = req("better-sqlite3") as BetterSqlite3Module;
-      inner = buildInner(extractDatabase(mod), options);
+        const mod = loadBetterSqlite();
+        inner = buildInner(extractDatabase(mod), options);
         return inner;
       })();
     }

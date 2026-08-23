@@ -60,7 +60,7 @@
     "zod": "^3.23.0"
   },
   "peerDependencies": {
-    "better-sqlite3": "^11.3.0",
+    "better-sqlite3": ">=11.3.0",
     "pg": "^8.13.0"
   },
   "peerDependenciesMeta": {
