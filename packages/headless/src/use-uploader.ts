@@ -193,7 +193,8 @@ export function useUploader(options: UseUploaderOptions): UseUploaderReturn {
           error: new FileSystemError({
             code: "NetworkError",
             retryable: true,
-            message: "XHR upload failed",
+            message:
+              "XHR upload failed (usually CORS). Same-origin /api/upload avoids this.",
             cause: { code: "XhrError", message: "XHR error event" },
           }),
         });
