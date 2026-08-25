@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --filter \"./packages/*\" typecheck",
     "changeset": "changeset",
     "version": "changeset version",
-    "publish": "pnpm -r publish"
+    "publish": "pnpm --filter \"./packages/*\" publish --no-git-checks"
   },
   "peerDependencies": {
     "next": ">=14.2.0",

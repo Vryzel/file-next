@@ -11,9 +11,9 @@ import {
   asUserId,
   type FileSystem,
   type MetadataStore,
-} from "file-next";
-import { createServerActions } from "file-next/server";
-import { createWriteThrough } from "file-next/sync";
+} from "@vryzel/file-next";
+import { createServerActions } from "@vryzel/file-next/server";
+import { createWriteThrough } from "@vryzel/file-next/sync";
 import { DEMO_QUOTA_BYTES } from "./constants";
 
 export const DEMO_TENANT = asTenantId("acme");

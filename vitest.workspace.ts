@@ -9,10 +9,10 @@ import tsconfigPaths from "vite-tsconfig-paths";
  *
  * - meta: node env (shell + config assertions). Uses
  *   `vite-tsconfig-paths` to honor the root tsconfig's `paths`
- *   (file-next → packages/core/src, file-next/server → server, etc.).
+ *   (file-next → packages/core/src, @vryzel/file-next/server → server, etc.).
  * - core: jsdom + React (the storage / metadata / server library)
  * - headless: jsdom + React (the headless hooks)
- * - cli: node (the @file-next/cli binary)
+ * - cli: node (the @vryzel/file-next-cli binary)
  * - registry: jsdom + React (the shadcn components + their tests)
  */
 export default defineWorkspace([

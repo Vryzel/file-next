@@ -4,7 +4,7 @@
  * `<FileActions />` — a dropdown menu for file actions (rename,
  * move, copy, delete) with optimistic updates and rollback.
  *
- * Built on `useFileActions` from `@file-next/headless`. The hook
+ * Built on `useFileActions` from `@vryzel/file-next-headless`. The hook
  * receives `files` and `setFiles` as the consumer's state pair,
  * and the three action callbacks (deleteFile, moveFile, copyFile).
  * This component renders the Radix DropdownMenu trigger + items
@@ -39,8 +39,8 @@ import {
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { useFileActions } from "@file-next/headless";
-import type { FileNode } from "file-next";
+import { useFileActions } from "@vryzel/file-next-headless";
+import type { FileNode } from "@vryzel/file-next";
 import { cn } from "@/lib/cn";
 
 // ---------------------------------------------------------------------------

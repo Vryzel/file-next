@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const distRoot = resolve(here, "../../dist");
 
-describe("T-051: file-next/server subpath build output", () => {
+describe("T-051: @vryzel/file-next/server subpath build output", () => {
   it("dist/server/index.js exists and re-exports server-only", () => {
     const f = resolve(distRoot, "server/index.js");
     if (!existsSync(f)) {

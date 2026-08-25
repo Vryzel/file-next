@@ -19,11 +19,11 @@
       "@/*": ["./packages/core/src/*"],
       "@/ui/*": ["./packages/core/src/ui/*"],
       "@/lib/*": ["./packages/core/src/lib/*"],
-      "file-next": ["./packages/core/src/index.ts"],
-      "file-next/server": ["./packages/core/src/server/index.ts"],
-      "file-next/sync": ["./packages/core/src/sync/index.ts"],
-      "file-next/errors": ["./packages/core/src/errors/index.ts"],
-      "@file-next/headless": ["./packages/headless/src/index.ts"],
+      "@vryzel/file-next": ["./packages/core/src/index.ts"],
+      "@vryzel/file-next/server": ["./packages/core/src/server/index.ts"],
+      "@vryzel/file-next/sync": ["./packages/core/src/sync/index.ts"],
+      "@vryzel/file-next/errors": ["./packages/core/src/errors/index.ts"],
+      "@vryzel/file-next-headless": ["./packages/headless/src/index.ts"],
       "@file-next/ui/*": ["./registry/components/file-next/*"]
     }
   },

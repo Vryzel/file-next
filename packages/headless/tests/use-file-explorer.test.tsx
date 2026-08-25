@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { asTenantId, asUserId, type FileNode } from "file-next";
+import { asTenantId, asUserId, type FileNode } from "@vryzel/file-next";
 import { useFileExplorer } from "@/use-file-explorer";
 
 const makeNode = (id: string, kind: FileNode["kind"]): FileNode => ({

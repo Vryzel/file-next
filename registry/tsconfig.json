@@ -7,8 +7,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
-      "@file-next/headless": ["../packages/headless/src/index.ts"],
-      "file-next": ["./tests/stubs/file-next.ts"]
+      "@vryzel/file-next-headless": ["../packages/headless/src/index.ts"],
+      "@vryzel/file-next": ["./tests/stubs/file-next.ts"]
     }
   }
 }

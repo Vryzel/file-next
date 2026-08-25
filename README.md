@@ -13,8 +13,8 @@
 ## Quick start
 
 ```bash
-# 1. Install
-pnpm add file-next @file-next/headless
+# 1. Install from GitHub Packages (see docs/github-packages.md)
+pnpm add @vryzel/file-next @vryzel/file-next-headless
 
 # 2. Set env (see docs/provider-setup.md for full config)
 export FILE_NEXT_PROVIDER=s3
@@ -25,7 +25,7 @@ export AWS_SECRET_ACCESS_KEY=...
 
 # 3. Wire it up in Next.js (server action)
 "use server";
-import { createServerActions } from "file-next/server";
+import { createServerActions } from "@vryzel/file-next/server";
 const actions = createServerActions({ store, writeThrough, fs, getAuth });
 export const listFiles = actions.listFiles;
 
@@ -41,9 +41,9 @@ That's it — you have a file browser, uploader, and server actions in 5 minutes
 |---|---|
 | `packages/core/` | Storage adapter, metadata store interfaces, server actions, route handlers |
 | `packages/headless/` | 5 React hooks (state machines, dependency-injected) |
-| `packages/cli/` | `@file-next/cli` — `migrate`, `reconcile`, `doctor` commands |
+| `packages/cli/` | `@vryzel/file-next-cli` — `migrate`, `reconcile`, `doctor` commands |
 | `registry/` | 7 shadcn registry items (`file-browser`, `file-uploader`, ...) |
-| `docs/` | `architecture.md`, `security.md`, `provider-setup.md` |
+| `docs/` | `architecture.md`, `security.md`, `provider-setup.md`, `github-packages.md` |
 | `app/` | Demo / docs Next.js app |
 | `.github/workflows/ci.yml` | CI (lint, typecheck, test, build, secret-guard, registry smoke) |
 
@@ -56,11 +56,12 @@ That's it — you have a file browser, uploader, and server actions in 5 minutes
 | `pnpm test` | Run tests in watch mode (Vitest) |
 | `pnpm test:run` | Run tests once |
 | `pnpm typecheck` | Type-check the whole project |
-| `pnpm --filter "@file-next/cli" build` | Build just the CLI |
+| `pnpm --filter "@vryzel/file-next-cli" build` | Build just the CLI |
 
 ## Next steps
 
-- **First time?** Read [`docs/provider-setup.md`](./docs/provider-setup.md) to configure AWS or Cloudflare.
+- **Install?** Private GitHub Packages: [`docs/github-packages.md`](./docs/github-packages.md).
+- **First time with S3/R2?** [`docs/provider-setup.md`](./docs/provider-setup.md).
 - **Building a UI?** Browse [`registry/`](./registry/) and install what you need via `shadcn add`.
 - **Curious how it works?** Read [`docs/architecture.md`](./docs/architecture.md).
 - **Production safety?** Read [`docs/security.md`](./docs/security.md).

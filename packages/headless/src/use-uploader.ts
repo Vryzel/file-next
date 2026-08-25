@@ -13,7 +13,7 @@
  * Architecture notes:
  *   - Dependency injection: the consumer passes `uploadUrl` and an
  *     optional `confirmUpload` callback. The hook does NOT import
- *     from `file-next/server` directly — the consumer wires their
+ *     from `@vryzel/file-next/server` directly — the consumer wires their
  *     own auth / RSC layer.
  *   - State machine: idle → uploading → (success | error | aborted).
  *     Local `useReducer` keeps the tree-shake small (no zustand).
@@ -24,7 +24,7 @@
  *     via `upload()`), so double-invocation is not an issue.
  */
 import { useCallback, useReducer, useRef, type Reducer } from "react";
-import { FileSystemError } from "file-next/errors";
+import { FileSystemError } from "@vryzel/file-next/errors";
 
 // ---------------------------------------------------------------------------
 // Public types

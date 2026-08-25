@@ -5,11 +5,11 @@
  *   - `src/index.ts`           → `dist/index.{js,cjs,d.ts}` (the main
  *     `file-next` package — re-exports everything, no server-only)
  *   - `src/server/entry.ts`    → `dist/server/index.{js,cjs,d.ts}`
- *     (the `file-next/server` subpath — has `import "server-only"`
+ *     (the `@vryzel/file-next/server` subpath — has `import "server-only"`
  *     at the top; a careless client-component import fails the
  *     Next.js build per spec scenario `distribution#1`)
  *   - `src/sync/index.ts`      → `dist/sync/index.{js,cjs,d.ts}`
- *     (the `file-next/sync` subpath — writeThrough sync layer)
+ *     (the `@vryzel/file-next/sync` subpath — writeThrough sync layer)
  *
  * All entries share the dual ESM + CJS + dts format, the `@/*`
  * alias, the `clean: true` flag, and the same `target: "es2022"`.

@@ -12,7 +12,7 @@
  * Architecture notes:
  *   - Dependency injection: `getDownloadUrl` is a callback the
  *     consumer passes in. The hook does NOT import from
- *     `file-next/server`.
+ *     `@vryzel/file-next/server`.
  *   - `useState` (not `useReducer`) — only 3 fields, 4 transitions.
  *     Per the design decision, simpler hooks can use useState.
  *   - React 18 strict-mode double-invokes effects in dev — guarded
@@ -22,7 +22,7 @@
  *     committing state).
  */
 import { useEffect, useRef, useState } from "react";
-import type { FileSystemError, Result } from "file-next";
+import type { FileSystemError, Result } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Public types

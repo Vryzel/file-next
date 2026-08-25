@@ -3,7 +3,7 @@
 /**
  * `<FileUploader />` — a dropzone + button uploader with progress and cancel.
  *
- * Built on `useUploader` from `@file-next/headless`. The hook handles
+ * Built on `useUploader` from `@vryzel/file-next-headless`. The hook handles
  * the XHR + progress events + cancel logic; this component is a thin
  * presentational layer with:
  *   - A dropzone that accepts dragged files (calls upload() on drop).
@@ -26,7 +26,7 @@
  */
 import { useCallback, useRef, useState, type DragEvent } from "react";
 import { UploadCloud as UploadCloudIcon, X as XIcon } from "lucide-react";
-import { useUploader } from "@file-next/headless";
+import { useUploader } from "@vryzel/file-next-headless";
 import { cn } from "@/lib/cn";
 
 // ---------------------------------------------------------------------------

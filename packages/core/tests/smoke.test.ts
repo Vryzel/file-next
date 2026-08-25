@@ -24,7 +24,7 @@ import {
   asPath,
   assertS3Key,
   cn,
-} from "file-next";
+} from "@vryzel/file-next";
 
 describe("file-next package smoke (T-008)", () => {
   it("re-exports Result helpers that compose end-to-end", () => {

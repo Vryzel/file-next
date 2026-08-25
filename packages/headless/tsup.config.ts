@@ -1,5 +1,5 @@
 /**
- * tsup build for the `@file-next/headless` package.
+ * tsup build for the `@vryzel/file-next-headless` package.
  *
  * One entry: `src/index.ts` (the 5 React hooks, re-exported).
  * ESM + CJS + dts, `@/*` alias, `react` and `react-dom` externalized
@@ -24,7 +24,13 @@ export default defineConfig({
   target: "es2022",
   splitting: false,
   treeshake: true,
-  external: ["react", "react-dom", "react/jsx-runtime"],
+  external: [
+    "react",
+    "react-dom",
+    "react/jsx-runtime",
+    "@vryzel/file-next",
+    "@vryzel/file-next/errors",
+  ],
   outExtension({ format }) {
     return { js: format === "cjs" ? ".cjs" : ".js" };
   },

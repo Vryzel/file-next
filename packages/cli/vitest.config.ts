@@ -14,7 +14,8 @@ export default defineConfig({
       // `file-next` is the core package's published name. We point it
       // at the source so tests can mock its exports without a prior
       // build step.
-      "file-next": path.resolve(__dirname, "../core/src/index.ts"),
+      "@vryzel/file-next": path.resolve(__dirname, "../core/src/index.ts"),
+      "@vryzel/file-next/sync": path.resolve(__dirname, "../core/src/sync/index.ts"),
     },
   },
 });

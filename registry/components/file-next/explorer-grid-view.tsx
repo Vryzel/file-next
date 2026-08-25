@@ -20,7 +20,7 @@ import type { DragEvent, KeyboardEvent } from "react";
 import { cn } from "@/lib/cn";
 import { FileIcon } from "./file-icon";
 import { EXPLORER_DRAG_MIME } from "./explorer-list-view";
-import type { FileNode } from "file-next";
+import type { FileNode } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Public types

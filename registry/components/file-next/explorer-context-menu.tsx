@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { cn } from "@/lib/cn";
-import type { FileNode } from "file-next";
+import type { FileNode } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Public types

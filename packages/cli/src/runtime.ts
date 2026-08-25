@@ -9,8 +9,8 @@ import {
   createSqliteStore,
   parseFileSystemConfig,
   type MetadataStore,
-} from "file-next";
-import { createWriteThrough } from "file-next/sync";
+} from "@vryzel/file-next";
+import { createWriteThrough } from "@vryzel/file-next/sync";
 import type { MigrateHooks } from "./migrate.js";
 import type { ReconcileHooks } from "./reconcile.js";
 

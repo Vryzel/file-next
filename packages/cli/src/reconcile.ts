@@ -61,7 +61,7 @@ export interface ReconcileResult {
  *
  * v0.1: the actual sync logic is provided via the `runSync` hook so
  * this CLI is testable without a real Postgres / S3 backend. The
- * consumer wires the real `reconcile()` from `file-next/sync` into
+ * consumer wires the real `reconcile()` from `@vryzel/file-next/sync` into
  * the hook when running the CLI against production.
  */
 export interface ReconcileHooks {

@@ -119,7 +119,7 @@ describe("registry install smoke — shadcn add semantics", () => {
     }
   });
 
-  it("headless items declare @file-next/headless as a registryDependency", () => {
+  it("headless items declare @vryzel/file-next-headless as a registryDependency", () => {
     const items = listItemJson();
     const fileBrowser = items.find((i) => i.parsed.name === "file-browser");
     const fileUploader = items.find((i) => i.parsed.name === "file-uploader");
@@ -127,8 +127,8 @@ describe("registry install smoke — shadcn add semantics", () => {
     for (const item of [fileBrowser, fileUploader, fileActions]) {
       const deps = (item!.parsed.registryDependencies as string[]) ?? [];
       expect(
-        deps.includes("@file-next/headless"),
-        `${item!.parsed.name} must declare @file-next/headless`,
+        deps.includes("@vryzel/file-next-headless"),
+        `${item!.parsed.name} must declare @vryzel/file-next-headless`,
       ).toBe(true);
     }
   });

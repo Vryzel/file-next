@@ -3,9 +3,9 @@
   "name": "file-uploader",
   "type": "registry:block",
   "title": "File Uploader",
-  "description": "Dropzone + click-to-pick uploader with live progress and cancel. Keyboard-accessible. Built on useUploader from @file-next/headless.",
+  "description": "Dropzone + click-to-pick uploader with live progress and cancel. Keyboard-accessible. Built on useUploader from @vryzel/file-next-headless.",
   "categories": ["files", "forms"],
-  "registryDependencies": ["@file-next/headless"],
+  "registryDependencies": ["@vryzel/file-next-headless"],
   "dependencies": ["lucide-react"],
   "files": [
     {

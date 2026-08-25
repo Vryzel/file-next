@@ -1,9 +1,13 @@
 {
-  "name": "@file-next/cli",
-  "version": "0.2.0",
+  "name": "@vryzel/file-next-cli",
+  "version": "0.3.0",
   "description": "CLI for file-next — migrate metadata schemas, reconcile drift between S3 and the metadata index, and diagnose environment / connectivity issues.",
   "type": "module",
   "license": "MIT",
+  "repository": "https://github.com/Vryzel/file-next.git",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "sideEffects": false,
   "bin": {
     "file-next": "./dist/bin.js"
@@ -23,7 +27,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "file-next": "workspace:*"
+    "@vryzel/file-next": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.3.5",

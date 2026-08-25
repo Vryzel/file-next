@@ -5,7 +5,7 @@
   "title": "File Explorer",
   "description": "Full file-browser orchestrator: list/grid views, search, trash, upload, new folder, share token, drag-drop.",
   "categories": ["files", "dashboard"],
-  "dependencies": ["@file-next/headless", "lucide-react", "@radix-ui/react-context-menu"],
+  "dependencies": ["@vryzel/file-next-headless", "lucide-react", "@radix-ui/react-context-menu"],
   "files": [
     {
       "path": "registry/components/file-next/file-explorer.tsx",

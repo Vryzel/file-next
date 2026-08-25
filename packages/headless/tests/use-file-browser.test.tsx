@@ -9,14 +9,14 @@
  *   - A rejected listFiles callback produces `{ status: 'error', files: [], error: <FileSystemError> }`.
  *
  * The hook receives the `listFiles` callback as an injected dependency
- * (no direct import of `file-next/server`). This keeps the package
+ * (no direct import of `@vryzel/file-next/server`). This keeps the package
  * pure-client and trivially testable.
  */
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useFileBrowser } from "@/use-file-browser";
-import { FileSystemError } from "file-next";
-import { asTenantId, type FileNode } from "file-next";
+import { FileSystemError } from "@vryzel/file-next";
+import { asTenantId, type FileNode } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Fixtures

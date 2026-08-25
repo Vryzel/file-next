@@ -29,7 +29,7 @@ import {
   useRef,
 } from "react";
 import { useFileBrowser } from "./use-file-browser";
-import type { FileNode, TenantId } from "file-next";
+import type { FileNode, TenantId } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Public types

@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useFileUrl } from "@/use-file-url";
-import type { FileSystemError } from "file-next";
+import type { FileSystemError } from "@vryzel/file-next";
 
 const okResult = <T,>(value: T) => ({ ok: true as const, value });
 const errResult = (error: FileSystemError) => ({ ok: false as const, error });

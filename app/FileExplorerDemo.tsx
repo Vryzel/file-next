@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { FileNode, FileSystemError, Result } from "file-next";
+import type { FileNode, FileSystemError, Result } from "@vryzel/file-next";
 import { FileExplorer } from "@file-next/ui/file-explorer";
 import { DEMO_QUOTA_BYTES } from "./lib/constants";
 import {

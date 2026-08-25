@@ -15,7 +15,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 const mockUpload = vi.fn();
 const mockCancel = vi.fn();
 const mockUseUploader = vi.fn();
-vi.mock("@file-next/headless", () => ({
+vi.mock("@vryzel/file-next-headless", () => ({
   useUploader: (...args: unknown[]) => mockUseUploader(...args),
 }));
 

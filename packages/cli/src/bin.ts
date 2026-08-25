@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Bin shim for `@file-next/cli`.
+ * Bin shim for `@vryzel/file-next-cli`.
  *
  * This file is the only place that translates the pure `dispatch()`
  * return value into process streams + exit. Splitting it out keeps

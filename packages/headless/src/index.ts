@@ -1,5 +1,5 @@
 /**
- * Public entry point for `@file-next/headless`.
+ * Public entry point for `@vryzel/file-next-headless`.
  *
  * This package is BEHAVIOR-ONLY: 5 React hooks that drive file
  * operations, with all server-side concerns (auth, S3 calls) injected

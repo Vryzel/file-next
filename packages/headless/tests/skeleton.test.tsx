@@ -1,5 +1,5 @@
 /**
- * Skeleton smoke test for the `@file-next/headless` package.
+ * Skeleton smoke test for the `@vryzel/file-next-headless` package.
  *
  * Purpose: prove that the test infrastructure (jsdom, react plugin,
  * jest-dom matchers, workspace project registration) is wired end-

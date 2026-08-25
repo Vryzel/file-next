@@ -15,8 +15,8 @@
  * Consumer pattern (in a Next.js app):
  *
  *   // app/api/upload/route.ts
- *   import { createUploadRouteHandler } from "file-next/server";
- *   import { getFileSystem } from "file-next";
+ *   import { createUploadRouteHandler } from "@vryzel/file-next/server";
+ *   import { getFileSystem } from "@vryzel/file-next";
  *   export const POST = createUploadRouteHandler({
  *     fs: getFileSystem(),
  *     maxBytes: 25 * 1024 * 1024,
@@ -25,7 +25,7 @@
  *
  *   // app/actions.ts
  *   "use server";
- *   import { listFilesAction } from "file-next/server";
+ *   import { listFilesAction } from "@vryzel/file-next/server";
  *   export { listFilesAction };
  */
 export { createServerActions } from "./actions";
@@ -59,4 +59,4 @@ export type {
   DownloadRouteHandlerResult,
 } from "./route-handlers";
 // withAuth + RequestContext are re-exported from the main
-// "file-next" entry (no need to be in the server-only module).
+// "@vryzel/file-next" entry (no need to be in the server-only module).

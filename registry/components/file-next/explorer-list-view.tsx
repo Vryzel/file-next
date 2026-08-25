@@ -24,7 +24,7 @@ import { useState, type DragEvent, type KeyboardEvent } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { FileIcon } from "./file-icon";
-import type { FileNode } from "file-next";
+import type { FileNode } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Public types

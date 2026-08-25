@@ -11,7 +11,7 @@
  */
 import { FolderPlus, LayoutGrid, List as ListIcon, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { ViewMode } from "@file-next/headless";
+import type { ViewMode } from "@vryzel/file-next-headless";
 
 export interface ExplorerToolbarProps {
   readonly view: ViewMode;

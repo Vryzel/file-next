@@ -7,7 +7,7 @@
  *
  * Architecture notes:
  *   - Dependency injection: the consumer passes `listFiles` as a
- *     prop. The hook does NOT import from `file-next/server`
+ *     prop. The hook does NOT import from `@vryzel/file-next/server`
  *     directly — the headless package is client-only, and the
  *     consumer wires their own auth / RSC layer around the callback.
  *   - State machine: idle → loading → (success | error). Errors are
@@ -17,7 +17,7 @@
  *     tree-shake small and the consumer's state lib unopinionated.
  */
 import { useCallback, useEffect, useReducer, type Reducer } from "react";
-import type { FileNode, FileSystemError, Result, TenantId } from "file-next";
+import type { FileNode, FileSystemError, Result, TenantId } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Public types

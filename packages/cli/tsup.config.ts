@@ -2,7 +2,7 @@ import { defineConfig } from "tsup";
 import path from "node:path";
 
 /**
- * tsup build for the `@file-next/cli` package.
+ * tsup build for the `@vryzel/file-next-cli` package.
  *
  * Single entry that becomes the `file-next` binary.
  * The CLI uses Node's built-in `node:util.parseArgs` — no external
@@ -22,6 +22,7 @@ export default defineConfig({
   target: "node20",
   splitting: false,
   treeshake: true,
+  external: ["@vryzel/file-next", "@vryzel/file-next/sync"],
   // No `banner` here — the shebang in src/bin.ts is preserved by
   // tsup for the `bin` entry. The `index` entry stays side-effect-free.
   // (tsup preserves a leading `#!/usr/bin/env node` from source.)

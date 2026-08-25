@@ -3,9 +3,9 @@
   "name": "file-actions",
   "type": "registry:block",
   "title": "File Actions",
-  "description": "Dropdown menu with rename / move / copy / delete actions. Optimistic updates with rollback. Built on useFileActions from @file-next/headless.",
+  "description": "Dropdown menu with rename / move / copy / delete actions. Optimistic updates with rollback. Built on useFileActions from @vryzel/file-next-headless.",
   "categories": ["files", "menus"],
-  "registryDependencies": ["@file-next/headless"],
+  "registryDependencies": ["@vryzel/file-next-headless"],
   "dependencies": [
     "lucide-react",
     "@radix-ui/react-dropdown-menu",

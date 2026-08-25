@@ -12,7 +12,7 @@
  * Architecture notes:
  *   - Dependency injection: the consumer passes `actions` (the 3
  *     server-action callbacks) and `files` / `setFiles` (their state
- *     pair). The hook does NOT import from `file-next/server` and
+ *     pair). The hook does NOT import from `@vryzel/file-next/server` and
  *     does NOT take ownership of the file list — the consumer
  *     remains the source of truth for the array.
  *   - State machine: idle → pending → (success | error). The
@@ -25,7 +25,7 @@
  *     `setFiles(next)` with the optimistic update.
  */
 import { useCallback, useReducer, type Reducer } from "react";
-import type { FileNode, FileSystemError, Result } from "file-next";
+import type { FileNode, FileSystemError, Result } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Public types

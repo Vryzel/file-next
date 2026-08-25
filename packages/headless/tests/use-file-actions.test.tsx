@@ -15,8 +15,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useFileActions } from "@/use-file-actions";
-import { asTenantId, asUserId } from "file-next";
-import type { FileNode, FileSystemError } from "file-next";
+import { asTenantId, asUserId } from "@vryzel/file-next";
+import type { FileNode, FileSystemError } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Fixtures

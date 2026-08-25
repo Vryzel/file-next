@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useDownloadProgress } from "@/use-download-progress";
-import type { FileSystemError } from "file-next";
+import type { FileSystemError } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Fetch stub helpers

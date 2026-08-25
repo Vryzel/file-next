@@ -19,7 +19,7 @@
  *   - The shell is a client component — every interactive piece
  *     uses hooks.
  *   - All callbacks go through the headless layer; this file
- *     never imports `file-next/server` or `file-next/sync` (those
+ *     never imports `@vryzel/file-next/server` or `@vryzel/file-next/sync` (those
  *     would pull server-only modules into the client bundle).
  */
 import {
@@ -30,14 +30,14 @@ import {
   useState,
   type DragEvent,
 } from "react";
-import { useFileExplorer, useUploader } from "@file-next/headless";
-import type { RequestUploadResult, UploaderFile } from "@file-next/headless";
+import { useFileExplorer, useUploader } from "@vryzel/file-next-headless";
+import type { RequestUploadResult, UploaderFile } from "@vryzel/file-next-headless";
 import type {
   FileNode,
   FileSystemError,
   Result,
   TenantId,
-} from "file-next";
+} from "@vryzel/file-next";
 import { Breadcrumbs } from "./breadcrumbs";
 import { EmptyState } from "./empty-state";
 import { ErrorState } from "./error-state";

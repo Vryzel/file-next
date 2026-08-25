@@ -1,18 +1,18 @@
 /**
  * Tests for `<FileBrowser />`.
  *
- * The component delegates to `useFileBrowser` from `@file-next/headless`,
+ * The component delegates to `useFileBrowser` from `@vryzel/file-next-headless`,
  * so we mock the hook to control its state across tests. This lets us
  * verify the component's mapping from hook state to UI independently
  * of the hook's own correctness (which is tested in the headless package).
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
-import { asTenantId, asUserId, type FileNode } from "file-next";
+import { asTenantId, asUserId, type FileNode } from "@vryzel/file-next";
 
 // Mock the headless hook. Each test sets the desired return value.
 const mockUseFileBrowser = vi.fn();
-vi.mock("@file-next/headless", () => ({
+vi.mock("@vryzel/file-next-headless", () => ({
   useFileBrowser: (...args: unknown[]) => mockUseFileBrowser(...args),
 }));
 

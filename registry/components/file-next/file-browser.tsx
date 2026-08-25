@@ -3,7 +3,7 @@
 /**
  * `<FileBrowser />` — a keyboard-navigable list of files and folders.
  *
- * Built on `useFileBrowser` from `@file-next/headless`. The hook
+ * Built on `useFileBrowser` from `@vryzel/file-next-headless`. The hook
  * fetches the listing via an injected callback and surfaces
  * loading / empty / error states; this component is a thin
  * presentational layer that maps those states to UI.
@@ -27,8 +27,8 @@
  */
 import { useCallback, useRef, useState, type KeyboardEvent } from "react";
 import { FileIcon, FolderIcon, Loader2Icon } from "lucide-react";
-import { useFileBrowser } from "@file-next/headless";
-import type { FileNode } from "file-next";
+import { useFileBrowser } from "@vryzel/file-next-headless";
+import type { FileNode } from "@vryzel/file-next";
 import { cn } from "@/lib/cn";
 
 // ---------------------------------------------------------------------------

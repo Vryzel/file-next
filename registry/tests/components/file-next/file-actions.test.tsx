@@ -1,7 +1,7 @@
 /**
  * Tests for `<FileActions />`.
  *
- * The component delegates to `useFileActions` from `@file-next/headless`,
+ * The component delegates to `useFileActions` from `@vryzel/file-next-headless`,
  * so we mock the hook to control its state across tests. Verifies:
  *   - Trigger button is rendered with correct aria-label.
  *   - Opening the menu shows the 4 items.
@@ -23,7 +23,7 @@ const mockMoveFile = vi.fn();
 const mockCopyFile = vi.fn();
 const mockRenameFile = vi.fn();
 
-vi.mock("@file-next/headless", () => ({
+vi.mock("@vryzel/file-next-headless", () => ({
   useFileActions: () => ({
     deleteFile: mockDeleteFile,
     moveFile: mockMoveFile,
@@ -35,7 +35,7 @@ vi.mock("@file-next/headless", () => ({
 }));
 
 import { FileActions } from "@/components/file-next/file-actions";
-import { asTenantId, asUserId, type FileNode } from "file-next";
+import { asTenantId, asUserId, type FileNode } from "@vryzel/file-next";
 
 // ---------------------------------------------------------------------------
 // Fixtures

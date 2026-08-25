@@ -1,9 +1,13 @@
 {
-  "name": "@file-next/headless",
-  "version": "0.2.0",
+  "name": "@vryzel/file-next-headless",
+  "version": "0.3.0",
   "description": "Headless React hooks for file-next: behavior-only state machines for file browsers, uploaders, file actions, presigned URL resolution, and download progress. No UI, no Tailwind, no Radix. State is local per-hook (useReducer); server actions are dependency-injected.",
   "type": "module",
   "license": "MIT",
+  "repository": "https://github.com/Vryzel/file-next.git",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -30,10 +34,10 @@
   "peerDependencies": {
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0",
-    "file-next": "^0.2.0"
+    "@vryzel/file-next": "^0.3.0"
   },
   "devDependencies": {
-    "file-next": "workspace:*",
+    "@vryzel/file-next": "workspace:*",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@types/react": "^18.3.12",

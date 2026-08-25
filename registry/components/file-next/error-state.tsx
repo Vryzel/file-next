@@ -18,7 +18,7 @@
  *     a plain `{ code, message }` shape (for tests / mock data).
  */
 import { AlertCircleIcon } from "lucide-react";
-import type { FileSystemError } from "file-next";
+import type { FileSystemError } from "@vryzel/file-next";
 import { cn } from "@/lib/cn";
 
 // ---------------------------------------------------------------------------

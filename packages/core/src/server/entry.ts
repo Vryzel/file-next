@@ -1,5 +1,5 @@
 /**
- * `file-next/server` — the published server subpath entry.
+ * `@vryzel/file-next/server` — the published server subpath entry.
  *
  * The first line `import "server-only"` is the load-bearing
  * instruction. Next.js 15 bundles this module only on the server;

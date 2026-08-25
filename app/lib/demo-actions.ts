@@ -1,7 +1,7 @@
 "use server";
 
 import { getActions, getStore, DEMO_TENANT } from "./file-next-store";
-import type { FileNode, FileSystemError, Result } from "file-next";
+import type { FileNode, FileSystemError, Result } from "@vryzel/file-next";
 
 export async function listFilesAction(input: {
   parentId: string | null;
