@@ -88,6 +88,7 @@ import {
 import { FileSystemError } from "@/errors";
 import { asS3Key, asTenantId, asUserId } from "@/types/branded";
 import { sanitizeFts5Query } from "./sanitize";
+import { normalizeNodeName } from "./node-name";
 import { decodeCursor, pageCursor } from "./cursor";
 import type {
   CreateNodeInput,
@@ -555,6 +556,9 @@ const buildInner = (
     async createNode(
       input: CreateNodeInput,
     ): Promise<Result<FileNode, FileSystemError>> {
+      const normalized = normalizeNodeName(input.name);
+      if (!normalized.ok) return normalized;
+      const name = normalized.value;
       const now = nowIso();
       const id = input.id ?? makeId();
 
@@ -580,14 +584,14 @@ const buildInner = (
         parentPath = parent.path;
       }
 
-      const path = computePath(parentPath, input.name);
+      const path = computePath(parentPath, name);
 
       try {
         stmtInsert.run({
           id,
           tenant_id: input.tenantId,
           parent_id: dbParent(input.parentId),
-          name: input.name,
+          name,
           path,
           kind: input.kind,
           size: input.kind === "folder" ? 0 : input.size,
@@ -604,7 +608,7 @@ const buildInner = (
           return err(
             new FileSystemError({
               code: "Conflict",
-              message: `A node named '${input.name}' already exists in this folder`,
+              message: `A node named '${name}' already exists in this folder`,
               retryable: false,
             }),
           );
@@ -676,7 +680,9 @@ const buildInner = (
         | undefined;
       if (!current) return notFound(input.id);
 
-      const newName = input.newName ?? current.name;
+      const normalized = normalizeNodeName(input.newName ?? current.name);
+      if (!normalized.ok) return normalized;
+      const newName = normalized.value;
 
       // Validate the new parent (if any) and check for cycles.
       // `!= null` (not `!== null`) so that BOTH null and

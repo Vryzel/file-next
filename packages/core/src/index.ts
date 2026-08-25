@@ -128,6 +128,8 @@ export {
   type SqliteStoreOptions,
   createPostgresStore,
   type PostgresStoreOptions,
+  NODE_NAME_MAX_LENGTH,
+  normalizeNodeName,
 } from "./metadata";
 export type {
   FileNode,

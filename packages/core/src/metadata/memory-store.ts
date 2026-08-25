@@ -42,6 +42,7 @@ import { FileSystemError } from "@/errors";
 import { asTenantId, asUserId } from "@/types/branded";
 import type { S3Key, TenantId } from "@/types/branded";
 import { decodeCursor, pageCursor } from "./cursor";
+import { normalizeNodeName } from "./node-name";
 import type {
   CreateNodeInput,
   DeleteNodeInput,
@@ -145,7 +146,10 @@ export const createMemoryStore = (): MetadataStore => {
 
   return {
     async createNode(input: CreateNodeInput): Promise<Result<FileNode, FileSystemError>> {
-      const nameOk = ensureNameAvailable(input.tenantId, input.parentId, input.name);
+      const normalized = normalizeNodeName(input.name);
+      if (!normalized.ok) return normalized;
+      const name = normalized.value;
+      const nameOk = ensureNameAvailable(input.tenantId, input.parentId, name);
       if (!nameOk.ok) return nameOk;
 
       const id = input.id ?? makeId();
@@ -159,12 +163,12 @@ export const createMemoryStore = (): MetadataStore => {
         );
       }
       const now = new Date();
-      const path = computePath(input.tenantId, input.parentId, input.name);
+      const path = computePath(input.tenantId, input.parentId, name);
       const node: FileNode = {
         id,
         tenantId: input.tenantId,
         parentId: input.parentId,
-        name: input.name,
+        name,
         path,
         kind: input.kind,
         size: input.kind === "folder" ? 0 : input.size,
@@ -227,7 +231,9 @@ export const createMemoryStore = (): MetadataStore => {
           }),
         );
       }
-      const newName = input.newName ?? n.name;
+      const normalized = normalizeNodeName(input.newName ?? n.name);
+      if (!normalized.ok) return normalized;
+      const newName = normalized.value;
 
       // Cycle check: the new parent must not be a descendant of n.
       let cursor: string | null = input.newParentId;

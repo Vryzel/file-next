@@ -78,6 +78,7 @@ import { FileSystemError } from "@/errors";
 import { asS3Key, asTenantId, asUserId } from "@/types/branded";
 import { sanitizeLikePattern } from "./sanitize";
 import { decodeCursor, pageCursor } from "./cursor";
+import { normalizeNodeName } from "./node-name";
 import type {
   CreateNodeInput,
   DeleteNodeInput,
@@ -448,6 +449,9 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       input: CreateNodeInput,
     ): Promise<Result<FileNode, FileSystemError>> {
       await ensureInitialized();
+      const normalized = normalizeNodeName(input.name);
+      if (!normalized.ok) return normalized;
+      const name = normalized.value;
       // Look up parent (if any) to compute the path. We require
       // a LIVE parent; tombstoned parents can't have new children.
       // `!= null` so BOTH null and undefined skip the lookup.
@@ -473,7 +477,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       }
 
       const id = input.id ?? makeId();
-      const path = parentPath === null ? `/${input.name}` : `${parentPath}/${input.name}`;
+      const path = parentPath === null ? `/${name}` : `${parentPath}/${name}`;
 
       try {
         await q(input.tenantId,
@@ -485,7 +489,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
             id,
             input.tenantId,
             input.parentId,
-            input.name,
+            name,
             path,
             input.kind,
             input.kind === "folder" ? 0 : input.size,
@@ -500,7 +504,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
           return err(
             new FileSystemError({
               code: "Conflict",
-              message: `A node named '${input.name}' already exists in this folder`,
+              message: `A node named '${name}' already exists in this folder`,
               retryable: false,
             }),
           );
@@ -587,7 +591,9 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
       const current = currentRes.rows[0];
       if (!current) return notFound(input.id);
 
-      const newName = input.newName ?? current.name;
+      const normalized = normalizeNodeName(input.newName ?? current.name);
+      if (!normalized.ok) return normalized;
+      const newName = normalized.value;
 
       // Validate the new parent (if any). `!= null` (NOT `!== null`)
       // so both null and undefined skip the block.

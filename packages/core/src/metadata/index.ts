@@ -22,6 +22,10 @@ export type {
   SearchInput,
   UpdateMetadataInput,
 } from "./store";
+export {
+  NODE_NAME_MAX_LENGTH,
+  normalizeNodeName,
+} from "./node-name";
 export { createMemoryStore } from "./memory-store";
 export {
   createSqliteStore,

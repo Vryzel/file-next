@@ -66,6 +66,21 @@ describe("T-026/T-027: createNode + getNode", () => {
     expect(g.value).toBeNull();
   });
 
+  it("createNode sanitizes slashes in the name", async () => {
+    const r = await store.createNode(makeFileInput({ name: "a/b.txt" }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.name).toBe("a-b.txt");
+    expect(r.value.path).toBe("/a-b.txt");
+  });
+
+  it("createNode rejects '.' as a name", async () => {
+    const r = await store.createNode(makeFileInput({ name: "." }));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error.code).toBe("Conflict");
+  });
+
   it("createNode rejects duplicate (parentId, name) with Conflict", async () => {
     await store.createNode(makeFileInput({ name: "x.txt" }));
     const r = await store.createNode(makeFileInput({ name: "x.txt" }));

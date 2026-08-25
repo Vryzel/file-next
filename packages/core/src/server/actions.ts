@@ -29,13 +29,13 @@ export const DeleteFileInputSchema = z.object({
 export const MoveFileInputSchema = z.object({
   id: NodeIdSchema,
   newParentId: PathSchema,
-  newName: z.string().min(1).optional(),
+  newName: z.string().min(1).max(255).optional(),
 });
 
 export const CopyFileInputSchema = z.object({
   id: NodeIdSchema,
   newParentId: PathSchema,
-  newName: z.string().min(1).optional(),
+  newName: z.string().min(1).max(255).optional(),
 });
 
 export const SetMetadataInputSchema = z.object({
@@ -46,12 +46,12 @@ export const SetMetadataInputSchema = z.object({
 
 export const CreateFolderInputSchema = z.object({
   parentId: PathSchema,
-  name: z.string().min(1),
+  name: z.string().min(1).max(255),
 });
 
 export const PrepareUploadInputSchema = z.object({
   parentId: PathSchema,
-  name: z.string().min(1),
+  name: z.string().min(1).max(255),
   contentType: z.string().min(1),
   contentLength: z.number().int().nonnegative(),
 });
@@ -59,7 +59,7 @@ export const PrepareUploadInputSchema = z.object({
 export const ConfirmUploadInputSchema = z.object({
   id: NodeIdSchema,
   parentId: PathSchema,
-  name: z.string().min(1),
+  name: z.string().min(1).max(255),
   contentType: z.string().optional(),
   size: z.number().int().nonnegative().optional(),
 });
