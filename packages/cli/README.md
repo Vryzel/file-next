@@ -10,4 +10,4 @@ file-next reconcile --tenant=<id> --dry-run
 file-next doctor
 ```
 
-Packages publish to GitHub Packages today. See [github-packages.md](../../docs/github-packages.md).
+Public on npmjs. See the repository README.

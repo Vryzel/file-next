@@ -42,4 +42,4 @@ export const actions = createServerActions({
 
 Tenant never comes from the client. Replace `getAuth` with your session.
 
-Packages publish to GitHub Packages today. See the repository README.
+Public on npmjs. See the repository README.
