@@ -6,10 +6,10 @@ Bytes live in object storage. The tree, search, trash, shares, and quota live in
 
 ## Quick path
 
-1. Install from GitHub Packages ([auth](./docs/github-packages.md)):
+1. Install from npm:
 
 ```bash
-pnpm add @vryzel/file-next @vryzel/file-next-headless
+pnpm add @vryzel/file-next @vryzel/file-next-headless @vryzel/file-next-ui
 ```
 
 2. Wire store + filesystem + actions in a server module:
@@ -74,7 +74,7 @@ Replace `getAuth` with your session. Bucket CORS and env: [`docs/provider-setup.
 | `packages/headless/` | React hooks |
 | `packages/cli/` | CLI |
 | `registry/` | shadcn items |
-| `docs/` | Architecture, security, provider setup, GitHub Packages |
+| `docs/` | Architecture, security, provider setup, install |
 | `app/` | Demo Next.js app |
 
 ```bash
@@ -85,7 +85,7 @@ pnpm typecheck
 
 ## Next
 
-- [GitHub Packages](./docs/github-packages.md)
+- [Install](./docs/github-packages.md)
 - [Provider setup](./docs/provider-setup.md)
 - [Architecture](./docs/architecture.md)
 - [Security](./docs/security.md)

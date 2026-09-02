@@ -15,4 +15,4 @@ pnpm add @vryzel/file-next-headless
 | `useFileUrl` | Presigned download URL |
 | `useDownloadProgress` | Fetch download with progress |
 
-Packages publish to GitHub Packages today. See the repository README.
+Public on npmjs. See the repository README.

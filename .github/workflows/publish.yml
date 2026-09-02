@@ -7,10 +7,9 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  github-packages:
+  npmjs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,10 +18,10 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          registry-url: https://npm.pkg.github.com
+          registry-url: https://registry.npmjs.org
           scope: "@vryzel"
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r --filter "./packages/*" build
-      - run: pnpm --filter "./packages/*" publish --no-git-checks
+      - run: pnpm --filter "./packages/*" publish --no-git-checks --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

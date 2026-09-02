@@ -6,7 +6,8 @@
   "license": "MIT",
   "repository": "https://github.com/Vryzel/file-next.git",
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   },
   "sideEffects": false,
   "bin": {
