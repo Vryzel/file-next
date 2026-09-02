@@ -51,7 +51,7 @@ export const actions = createServerActions({
 
 Replace `getAuth` with your session. Bucket CORS and env: [`docs/provider-setup.md`](./docs/provider-setup.md).
 
-3. UI: copy `registry/components/file-next/` into your app. `npx shadcn add` from a GitHub raw URL only works once this repository is public.
+3. UI: `pnpm add @vryzel/file-next-ui` and render `<FileExplorer />`. Pieces are also exported if you want to compose. Copy `registry/` only if you need to own the JSX.
 
 ## Packages
 
@@ -59,6 +59,7 @@ Replace `getAuth` with your session. Bucket CORS and env: [`docs/provider-setup.
 |---|---|
 | [`@vryzel/file-next`](./packages/core) | Storage, metadata stores, server actions, write-through |
 | [`@vryzel/file-next-headless`](./packages/headless) | 6 hooks: `useFileBrowser`, `useFileExplorer`, `useUploader`, `useFileActions`, `useFileUrl`, `useDownloadProgress` |
+| [`@vryzel/file-next-ui`](./packages/ui) | Default `FileExplorer` plus composable pieces. Tailwind `className`. |
 | [`@vryzel/file-next-cli`](./packages/cli) | `migrate`, `reconcile`, `doctor` |
 
 ## Registry

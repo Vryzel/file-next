@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 — 2026-09-02
+
+- `@vryzel/file-next-ui`: default `FileExplorer` (quote-grade) plus composable pieces, Tailwind `className`, optional labels.
+
 ## 0.3.1 — 2026-09-02
 
 - Honest public docs: 6 hooks, 13 registry items, no mixed bash/TS snippet.
