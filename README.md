@@ -1,70 +1,93 @@
 # file-next
 
-> File-system abstraction over AWS S3 / Cloudflare R2 for Next.js, with shadcn/ui components and a SQLite/Postgres metadata index.
+Drive-like files for Next.js: your S3 or R2 bucket, your database, optional shadcn UI.
 
-`file-next` gives Next.js apps a single, batteries-included API for file management:
+Bytes live in object storage. The tree, search, trash, shares, and quota live in SQLite or Postgres. Hooks are headless. Tenant comes from `getAuth()`, never from the client.
 
-- **Storage adapter** — drop-in S3 / R2 client built on AWS SDK v3.
-- **Metadata index** — bring your own DB (Postgres / SQLite / in-memory); queries stay fast.
-- **UI components** — copy-paste-ready shadcn/ui items for upload, list, delete, breadcrumb, preview.
-- **Headless hooks** — five React hooks (`useFileBrowser`, `useUploader`, `useFileActions`, `useFileUrl`, `useDownloadProgress`) for custom UIs.
-- **Type-safe** — strict TypeScript; errors as `Result<T, FileSystemError>`.
+## Quick path
 
-## Quick start
+1. Install from GitHub Packages ([auth](./docs/github-packages.md)):
 
 ```bash
-# 1. Install from GitHub Packages (see docs/github-packages.md)
 pnpm add @vryzel/file-next @vryzel/file-next-headless
-
-# 2. Set env (see docs/provider-setup.md for full config)
-export FILE_NEXT_PROVIDER=s3
-export FILE_NEXT_BUCKET=my-app-uploads
-export FILE_NEXT_REGION=us-east-1
-export AWS_ACCESS_KEY_ID=...
-export AWS_SECRET_ACCESS_KEY=...
-
-# 3. Wire it up in Next.js (server action)
-"use server";
-import { createServerActions } from "@vryzel/file-next/server";
-const actions = createServerActions({ store, writeThrough, fs, getAuth });
-export const listFiles = actions.listFiles;
-
-# 4. Copy the explorer into your app
-npx shadcn@2.1.0 add https://raw.githubusercontent.com/Vryzel/file-next/main/registry/file-explorer.json
 ```
 
-That's it — you have a file browser, uploader, and server actions in 5 minutes.
+2. Wire store + filesystem + actions in a server module:
 
-## What's in this repo
+```ts
+import {
+  asTenantId,
+  asUserId,
+  createFileSystem,
+  createSqliteStore,
+} from "@vryzel/file-next";
+import { createServerActions } from "@vryzel/file-next/server";
+import { createWriteThrough } from "@vryzel/file-next/sync";
+
+const store = createSqliteStore({ path: ".data/metadata.db" });
+const fs = createFileSystem(
+  {
+    provider: "s3",
+    bucket: process.env.FILE_NEXT_BUCKET!,
+    region: process.env.FILE_NEXT_REGION ?? "us-east-1",
+    credentials: {
+      accessKeyId: process.env.FILE_NEXT_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.FILE_NEXT_SECRET_ACCESS_KEY!,
+    },
+  },
+  { store },
+);
+
+export const actions = createServerActions({
+  store,
+  fs,
+  writeThrough: createWriteThrough(fs, store),
+  getAuth: () => ({
+    tenantId: asTenantId("acme"),
+    userId: asUserId("user-1"),
+  }),
+});
+```
+
+Replace `getAuth` with your session. Bucket CORS and env: [`docs/provider-setup.md`](./docs/provider-setup.md).
+
+3. UI: copy `registry/components/file-next/` into your app. `npx shadcn add` from a GitHub raw URL only works once this repository is public.
+
+## Packages
+
+| Package | What |
+|---|---|
+| [`@vryzel/file-next`](./packages/core) | Storage, metadata stores, server actions, write-through |
+| [`@vryzel/file-next-headless`](./packages/headless) | 6 hooks: `useFileBrowser`, `useFileExplorer`, `useUploader`, `useFileActions`, `useFileUrl`, `useDownloadProgress` |
+| [`@vryzel/file-next-cli`](./packages/cli) | `migrate`, `reconcile`, `doctor` |
+
+## Registry
+
+13 shadcn items in [`registry/`](./registry/). The composed block is `file-explorer`.
+
+## Repo
 
 | Path | Purpose |
 |---|---|
-| `packages/core/` | Storage adapter, metadata store interfaces, server actions, route handlers |
-| `packages/headless/` | 5 React hooks (state machines, dependency-injected) |
-| `packages/cli/` | `@vryzel/file-next-cli` — `migrate`, `reconcile`, `doctor` commands |
-| `registry/` | 7 shadcn registry items (`file-browser`, `file-uploader`, ...) |
-| `docs/` | `architecture.md`, `security.md`, `provider-setup.md`, `github-packages.md` |
-| `app/` | Demo / docs Next.js app |
-| `.github/workflows/ci.yml` | CI (lint, typecheck, test, build, secret-guard, registry smoke) |
+| `packages/core/` | Adapter, metadata, server, sync |
+| `packages/headless/` | React hooks |
+| `packages/cli/` | CLI |
+| `registry/` | shadcn items |
+| `docs/` | Architecture, security, provider setup, GitHub Packages |
+| `app/` | Demo Next.js app |
 
-## Scripts
+```bash
+pnpm test:run      # unit tests; Postgres skips if nothing listens on POSTGRES_TEST_URL
+pnpm test:integration  # S3; skips without INTEGRATION_S3_ENDPOINT
+pnpm typecheck
+```
 
-| Command | What it does |
-|---|---|
-| `pnpm dev` | Run the demo app (Next.js) |
-| `pnpm build` | Build all workspace packages + the demo app |
-| `pnpm test` | Run tests in watch mode (Vitest) |
-| `pnpm test:run` | Run tests once |
-| `pnpm typecheck` | Type-check the whole project |
-| `pnpm --filter "@vryzel/file-next-cli" build` | Build just the CLI |
+## Next
 
-## Next steps
-
-- **Install?** Private GitHub Packages: [`docs/github-packages.md`](./docs/github-packages.md).
-- **First time with S3/R2?** [`docs/provider-setup.md`](./docs/provider-setup.md).
-- **Building a UI?** Browse [`registry/`](./registry/) and install what you need via `shadcn add`.
-- **Curious how it works?** Read [`docs/architecture.md`](./docs/architecture.md).
-- **Production safety?** Read [`docs/security.md`](./docs/security.md).
+- [GitHub Packages](./docs/github-packages.md)
+- [Provider setup](./docs/provider-setup.md)
+- [Architecture](./docs/architecture.md)
+- [Security](./docs/security.md)
 
 ## License
 

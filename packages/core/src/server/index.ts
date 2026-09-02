@@ -1,9 +1,8 @@
 /**
  * Testable server entry point.
  *
- * This module re-exports the 5 server actions (PR 7a) and the 2
- * route-handler factories (PR 7b). It is the import target for
- * the library's own tests — kept free of `import "server-only"`
+ * Re-exports server actions and route-handler factories. Import
+ * target for the library's own tests — kept free of `import "server-only"`
  * so vitest can evaluate the module under jsdom without throwing.
  *
  * The CONSUMER-facing server entry is `server/entry.ts` (the

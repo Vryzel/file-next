@@ -1,7 +1,7 @@
 /**
  * Public entry point for `@vryzel/file-next-headless`.
  *
- * This package is BEHAVIOR-ONLY: 5 React hooks that drive file
+ * This package is BEHAVIOR-ONLY: 6 React hooks that drive file
  * operations, with all server-side concerns (auth, S3 calls) injected
  * as callback arguments. Consumers wire their own action creators and
  * the headless layer just orchestrates state transitions and the
@@ -15,10 +15,11 @@
  *   - Consumers can compose their own auth / middleware at the
  *     action-callback layer.
  *
- * The 5 hooks shipped in v0.1:
+ * Hooks:
  *   - `useFileBrowser`     — list with loading/empty/error states
+ *   - `useFileExplorer`    — view mode, selection, and drag state on top of the list
  *   - `useUploader`        — XHR-based upload with progress + cancel
- *   - `useFileActions`     — optimistic delete/move/copy with rollback
+ *   - `useFileActions`     — optimistic delete/move/copy/rename with rollback
  *   - `useFileUrl`         — resolve a presigned URL for a key
  *   - `useDownloadProgress`— fetch + reader download with progress + cancel
  */

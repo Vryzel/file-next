@@ -1,29 +1,29 @@
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "file-next",
-  "homepage": "https://file-next.dev",
-  "description": "File-system components for Next.js — file browser, uploader, actions, and supporting primitives built on @file-next/headless.",
-  "author": "file-next contributors <hello@file-next.dev>",
+  "homepage": "https://github.com/Vryzel/file-next",
+  "description": "File-system components for Next.js — file browser, uploader, actions, and supporting primitives built on @vryzel/file-next-headless.",
+  "author": "file-next contributors",
   "items": [
     {
       "name": "file-browser",
       "type": "registry:block",
       "title": "File Browser",
-      "description": "List files with keyboard navigation, loading and error states. Built on useFileBrowser from @file-next/headless.",
+      "description": "List files with keyboard navigation, loading and error states. Built on useFileBrowser from @vryzel/file-next-headless.",
       "categories": ["files", "dashboard"]
     },
     {
       "name": "file-uploader",
       "type": "registry:block",
       "title": "File Uploader",
-      "description": "Dropzone + button with keyboard support, real progress and cancel. Built on useUploader from @file-next/headless.",
+      "description": "Dropzone + button with keyboard support, real progress and cancel. Built on useUploader from @vryzel/file-next-headless.",
       "categories": ["files", "forms"]
     },
     {
       "name": "file-actions",
       "type": "registry:block",
       "title": "File Actions",
-      "description": "Delete / move / copy menu with optimistic update + rollback. Built on useFileActions from @file-next/headless.",
+      "description": "Delete / move / copy menu with optimistic update + rollback. Built on useFileActions from @vryzel/file-next-headless.",
       "categories": ["files", "menus"]
     },
     {
@@ -58,7 +58,7 @@
       "name": "file-explorer",
       "type": "registry:block",
       "title": "File Explorer",
-      "description": "Full file-browser orchestrator: list/grid views, context menu, drag-drop, breadcrumbs. Built on useFileExplorer from @file-next/headless.",
+      "description": "Full file-browser orchestrator: list/grid views, context menu, drag-drop, breadcrumbs. Built on useFileExplorer from @vryzel/file-next-headless.",
       "categories": ["files", "dashboard"]
     },
     {

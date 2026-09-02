@@ -6,25 +6,35 @@ import { createSqliteStore } from "@/metadata/sqlite-store";
 import { createPostgresStore } from "@/metadata/postgres-store";
 import { asS3Key, asTenantId, asUserId } from "@/types/branded";
 import type { CreateNodeInput, MetadataStore } from "@/metadata/store";
+import { POSTGRES_TEST_URL, isPostgresReachable } from "./postgres-ready";
 
-const TEST_URL =
-  process.env.POSTGRES_TEST_URL ??
-  "postgres://file_next:file_next@localhost:5433/file_next";
 const schema = `test_orphans_${randomUUID().replaceAll("-", "")}`;
-const adminPool = new Pool({ connectionString: TEST_URL });
+const postgresAvailable = await isPostgresReachable();
 
 const stores: Array<[string, () => MetadataStore]> = [
   ["memory", () => createMemoryStore()],
   ["sqlite", () => createSqliteStore({ path: ":memory:" })],
-  [
-    "postgres",
-    () => createPostgresStore({ connectionString: TEST_URL, schema }),
-  ],
 ];
 
+if (postgresAvailable) {
+  stores.push([
+    "postgres",
+    () =>
+      createPostgresStore({
+        connectionString: POSTGRES_TEST_URL,
+        schema,
+      }),
+  ]);
+}
+
 afterAll(async () => {
-  await adminPool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-  await adminPool.end();
+  if (!postgresAvailable) return;
+  const adminPool = new Pool({ connectionString: POSTGRES_TEST_URL });
+  try {
+    await adminPool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+  } finally {
+    await adminPool.end();
+  }
 });
 
 const makeFile = (

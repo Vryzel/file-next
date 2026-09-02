@@ -1,21 +1,10 @@
 /**
- * Public entry point for the `file-next` library.
+ * Public entry point for `@vryzel/file-next`.
  *
- * Public API for v0.1 PR 2a (storage skeleton):
- *   - `Result<T, E>` and its helpers (ok / err / map / mapErr / andThen / unwrap / unwrapOr)
- *   - `FileSystemError` + the 11 code catalog + the fromAws / fromPg / fromSqlite mappers
- *   - Branded nominal types (Path, Prefix, S3Key, TenantId, UserId) and their as* / assert* guards
- *   - The Tailwind `cn` utility (shared with shadcn consumers)
- *   - `S3CompatibleAdapter` — the 13-method interface every provider implements
- *     (S3, R2, future Backblaze B2 / MinIO)
- *   - The `FileSystem` container type (adapter + config + metadata + forTenant)
- *   - Adapter input/output types (List, Read, Write, Stat, PresignedURL, ...)
- *
- * The factory (`createFileSystem`), the env singleton (`getFileSystem`),
- * the concrete S3 / R2 adapters, the metadata store, the server
- * actions, and the headless hooks land in later PRs (PR 2a tasks
- * T-010/T-011 land here, PR 2b adds the concrete adapters, PR 3+ adds
- * the rest).
+ * Storage (`createFileSystem`, `getFileSystem`, S3/R2/memory adapters),
+ * branded IDs, `Result` + `FileSystemError`, and metadata stores
+ * (memory / SQLite / Postgres). Server actions live on `./server`;
+ * write-through on `./sync`; React hooks on `@vryzel/file-next-headless`.
  */
 
 export type {
@@ -106,7 +95,7 @@ export { prefixAdapter, tenantPrefix } from "./storage/prefix-adapter";
 export { withAuth } from "./auth/with-auth";
 export type { AuthContext } from "./auth/with-auth";
 export type { CreateFileSystemOptions } from "./storage/filesystem";
-export { getFileSystem, _resetFileSystemForTests } from "./storage/singleton";
+export { getFileSystem } from "./storage/singleton";
 export {
   createMemoryAdapter,
   type MemoryAdapterOptions,

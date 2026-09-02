@@ -9,7 +9,7 @@
  * Requirements:
  *   - Postgres reachable via env POSTGRES_TEST_URL
  *     (default: postgres://file_next:file_next@localhost:5433/file_next)
- *   - docker compose -f docker-compose.yml up (in the test project)
+ *   - Skipped when nothing is listening (same idea as S3 skipIf)
  *
  * Coverage mirrors the SQLite store: all 9 methods, tenant
  * isolation, soft-delete cascade, conflict detection, recursive
@@ -27,10 +27,9 @@ import type {
   CreateNodeInput,
   MetadataStore,
 } from "@/metadata/store";
+import { POSTGRES_TEST_URL, isPostgresReachable } from "./postgres-ready";
 
-const TEST_URL =
-  process.env.POSTGRES_TEST_URL ??
-  "postgres://file_next:file_next@localhost:5433/file_next";
+const TEST_URL = POSTGRES_TEST_URL;
 
 // Per-file schema. All nodes for every test in this file live
 // inside this schema.
@@ -68,6 +67,9 @@ const baseFolderInput = (
   ...overrides,
 });
 
+const postgresAvailable = await isPostgresReachable(TEST_URL);
+
+describe.skipIf(!postgresAvailable)("Postgres MetadataStore", () => {
 let store: MetadataStore;
 let adminPool: Pool;
 
@@ -691,6 +693,7 @@ describe("createPostgresStore — tenant isolation", () => {
     expect(b.id).toBeTruthy();
     expect(a.id).not.toBe(b.id);
   });
+});
 });
 
 // ---------------------------------------------------------------------------
