@@ -1,7 +1,7 @@
 {
-  "name": "@vryzel/file-next-headless",
+  "name": "@vryzel/file-next-ui",
   "version": "0.4.0",
-  "description": "Headless React hooks for file-next: behavior-only state machines for file browsers, uploaders, file actions, presigned URL resolution, and download progress. No UI, no Tailwind, no Radix. State is local per-hook (useReducer); server actions are dependency-injected.",
+  "description": "Ready-to-use file explorer UI for file-next. Tailwind classes, composable pieces, and a default FileExplorer.",
   "type": "module",
   "license": "MIT",
   "repository": "https://github.com/Vryzel/file-next.git",
@@ -34,10 +34,17 @@
   "peerDependencies": {
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0",
-    "@vryzel/file-next": "^0.4.0"
+    "@vryzel/file-next": "^0.4.0",
+    "@vryzel/file-next-headless": "^0.4.0"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.460.0",
+    "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
     "@vryzel/file-next": "workspace:*",
+    "@vryzel/file-next-headless": "workspace:*",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@types/react": "^18.3.12",
@@ -47,14 +54,14 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
     "vitest": "^2.1.5"
   },
   "keywords": [
     "react",
-    "hooks",
-    "file-upload",
-    "headless",
-    "state-machine",
-    "useReducer"
+    "file-explorer",
+    "tailwind",
+    "nextjs",
+    "s3"
   ]
 }

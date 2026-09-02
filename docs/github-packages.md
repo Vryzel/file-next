@@ -6,6 +6,7 @@ Packages are scoped to `@vryzel` and publish to `https://npm.pkg.github.com`. Fi
 |---|---|
 | `@vryzel/file-next` | Core: factory, stores, server actions, sync |
 | `@vryzel/file-next-headless` | React hooks |
+| `@vryzel/file-next-ui` | Default FileExplorer + composable pieces |
 | `@vryzel/file-next-cli` | `file-next` binary |
 
 ## Consume in another repo

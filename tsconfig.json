@@ -24,6 +24,7 @@
       "@vryzel/file-next/sync": ["./packages/core/src/sync/index.ts"],
       "@vryzel/file-next/errors": ["./packages/core/src/errors/index.ts"],
       "@vryzel/file-next-headless": ["./packages/headless/src/index.ts"],
+      "@vryzel/file-next-ui": ["./packages/ui/src/index.ts"],
       "@file-next/ui/*": ["./registry/components/file-next/*"]
     }
   },
