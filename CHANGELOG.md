@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — 2026-09-02
+
+- Package READMEs: copy-paste use cases for core, headless, UI, and CLI.
+
 ## 0.4.0 — 2026-09-02
 
 - `@vryzel/file-next-ui`: default `FileExplorer` (quote-grade) plus composable pieces, Tailwind `className`, optional labels.

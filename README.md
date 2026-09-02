@@ -1,18 +1,16 @@
 # file-next
 
-Drive-like files for Next.js: your S3 or R2 bucket, your database, optional shadcn UI.
+Drive-like files for Next.js: your S3 or R2 bucket, your database, optional UI.
 
-Bytes live in object storage. The tree, search, trash, shares, and quota live in SQLite or Postgres. Hooks are headless. Tenant comes from `getAuth()`, never from the client.
-
-## Quick path
-
-1. Install from npm:
+Bytes live in object storage. The tree, search, trash, shares, and quota live in SQLite or Postgres. Tenant comes from `getAuth()`, never from the client.
 
 ```bash
 pnpm add @vryzel/file-next @vryzel/file-next-headless @vryzel/file-next-ui
 ```
 
-2. Wire store + filesystem + actions in a server module:
+## Quick path
+
+**1. Server** — store + filesystem + actions ([full core docs](./packages/core/README.md)):
 
 ```ts
 import {
@@ -49,46 +47,50 @@ export const actions = createServerActions({
 });
 ```
 
-Replace `getAuth` with your session. Bucket CORS and env: [`docs/provider-setup.md`](./docs/provider-setup.md).
+**2. UI** — default explorer ([full UI docs](./packages/ui/README.md)):
 
-3. UI: `pnpm add @vryzel/file-next-ui` and render `<FileExplorer />`. Pieces are also exported if you want to compose. Copy `registry/` only if you need to own the JSX.
+```tsx
+"use client";
+import { FileExplorer } from "@vryzel/file-next-ui";
 
-## Packages
-
-| Package | What |
-|---|---|
-| [`@vryzel/file-next`](./packages/core) | Storage, metadata stores, server actions, write-through |
-| [`@vryzel/file-next-headless`](./packages/headless) | 6 hooks: `useFileBrowser`, `useFileExplorer`, `useUploader`, `useFileActions`, `useFileUrl`, `useDownloadProgress` |
-| [`@vryzel/file-next-ui`](./packages/ui) | Default `FileExplorer` plus composable pieces. Tailwind `className`. |
-| [`@vryzel/file-next-cli`](./packages/cli) | `migrate`, `reconcile`, `doctor` |
-
-## Registry
-
-13 shadcn items in [`registry/`](./registry/). The composed block is `file-explorer`.
-
-## Repo
-
-| Path | Purpose |
-|---|---|
-| `packages/core/` | Adapter, metadata, server, sync |
-| `packages/headless/` | React hooks |
-| `packages/cli/` | CLI |
-| `registry/` | shadcn items |
-| `docs/` | Architecture, security, provider setup, install |
-| `app/` | Demo Next.js app |
-
-```bash
-pnpm test:run      # unit tests; Postgres skips if nothing listens on POSTGRES_TEST_URL
-pnpm test:integration  # S3; skips without INTEGRATION_S3_ENDPOINT
-pnpm typecheck
+<FileExplorer
+  className="h-[70vh] overflow-hidden rounded-[10px] border"
+  tenantId="acme"
+  parentId={folderId}
+  listFiles={listFiles}
+  searchFiles={searchFiles}
+  listTrash={listTrash}
+  requestUpload={requestUpload}
+  actions={fileActions}
+  onOpenFolder={(folder) => setFolderId(folder.id)}
+/>
 ```
 
-## Next
+Scan `@vryzel/file-next-ui/dist` in `tailwind.config` `content`. CORS/IAM: [`docs/provider-setup.md`](./docs/provider-setup.md).
+
+## Which package
+
+| I want to… | Package |
+|---|---|
+| Talk to S3/R2 + SQLite/Postgres, server actions | [`@vryzel/file-next`](./packages/core/README.md) |
+| Build my own UI with hooks | [`@vryzel/file-next-headless`](./packages/headless/README.md) |
+| Drop in a Drive-like explorer | [`@vryzel/file-next-ui`](./packages/ui/README.md) |
+| Diagnose env (`doctor`) | [`@vryzel/file-next-cli`](./packages/cli/README.md) |
+
+Each package README has copy-paste use cases.
+
+## Docs
 
 - [Install](./docs/github-packages.md)
 - [Provider setup](./docs/provider-setup.md)
 - [Architecture](./docs/architecture.md)
 - [Security](./docs/security.md)
+
+```bash
+pnpm test:run           # Postgres skips if nothing listens
+pnpm test:integration   # S3; skips without INTEGRATION_S3_ENDPOINT
+pnpm typecheck
+```
 
 ## License
 
