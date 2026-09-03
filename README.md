@@ -2,6 +2,8 @@
 
 Drive-like files for Next.js: your S3 or R2 bucket, your database, optional UI.
 
+[Live demo](https://file-next-test-production.up.railway.app)
+
 Bytes live in object storage. The tree, search, trash, shares, and quota live in SQLite or Postgres. Tenant comes from `getAuth()`, never from the client.
 
 ```bash
@@ -81,6 +83,7 @@ Each package README has copy-paste use cases.
 
 ## Docs
 
+- [Live demo](https://file-next-test-production.up.railway.app)
 - [Install](./docs/github-packages.md)
 - [Provider setup](./docs/provider-setup.md)
 - [Architecture](./docs/architecture.md)

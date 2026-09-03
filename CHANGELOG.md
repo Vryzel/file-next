@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4 — 2026-09-03
+
+- Package READMEs and the repo README link the [live demo](https://file-next-test-production.up.railway.app).
+
 ## 0.4.3 — 2026-09-03
 
 - Share links are `/api/share/{token}` on the app origin. `createShareRouteHandler` streams the object so the URL never exposes the bucket or key.

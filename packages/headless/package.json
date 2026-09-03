@@ -1,6 +1,6 @@
 {
   "name": "@vryzel/file-next-headless",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Headless React hooks for file-next: behavior-only state machines for file browsers, uploaders, file actions, presigned URL resolution, and download progress. No UI, no Tailwind, no Radix. State is local per-hook (useReducer); server actions are dependency-injected.",
   "type": "module",
   "license": "MIT",

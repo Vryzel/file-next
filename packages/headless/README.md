@@ -2,6 +2,8 @@
 
 Headless React hooks for file-next. No UI, no Tailwind, no Radix. You inject server callbacks; the hook owns state.
 
+[Live demo](https://file-next-test-production.up.railway.app)
+
 ```bash
 pnpm add @vryzel/file-next-headless
 ```

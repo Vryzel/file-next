@@ -2,6 +2,8 @@
 
 CLI for file-next: env diagnosis, and (if you wire hooks) migrate / reconcile.
 
+[Live demo](https://file-next-test-production.up.railway.app)
+
 ```bash
 pnpm add -g @vryzel/file-next-cli
 # or one-shot:
