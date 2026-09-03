@@ -90,8 +90,8 @@ process.exit(result.exitCode);
 
 ```bash
 file-next migrate --adapter=sqlite
-file-next reconcile --tenant=acme --dry-run
-file-next reconcile --tenant=acme
+file-next reconcile --tenant=demo --dry-run
+file-next reconcile --tenant=demo
 ```
 
 ### 4. Help / version

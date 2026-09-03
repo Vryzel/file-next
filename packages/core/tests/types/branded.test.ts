@@ -51,7 +51,7 @@ describe("T-005: branded types (Path, Prefix, S3Key, TenantId, UserId)", () => {
 
     it("forbids assigning a TenantId to a UserId slot", () => {
       // @ts-expect-error - TenantId is not assignable to UserId
-      const _bad: UserId = asTenantId("acme");
+      const _bad: UserId = asTenantId("demo");
     });
 
     it("forbids assigning a Prefix to an S3Key slot", () => {
@@ -81,13 +81,13 @@ describe("T-005: branded types (Path, Prefix, S3Key, TenantId, UserId)", () => {
 
     it("assertTenantId throws on empty or non-alphanumeric input", () => {
       expect(() => assertTenantId("")).toThrow(TypeError);
-      expect(() => assertTenantId("acme corp!")).toThrow(TypeError);
-      expect(() => assertTenantId("acme corp")).toThrow(TypeError);
+      expect(() => assertTenantId("demo corp!")).toThrow(TypeError);
+      expect(() => assertTenantId("demo corp")).toThrow(TypeError);
     });
 
     it("assertTenantId accepts alphanumerics, dashes, and underscores", () => {
-      expect(assertTenantId("acme")).toBe("acme");
-      expect(assertTenantId("acme-corp_2")).toBe("acme-corp_2");
+      expect(assertTenantId("demo")).toBe("demo");
+      expect(assertTenantId("demo-corp_2")).toBe("demo-corp_2");
     });
 
     it("assertPath throws on empty input but accepts a single slash", () => {

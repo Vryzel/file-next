@@ -41,7 +41,7 @@ const ok = async <T>(
   return r.value;
 };
 
-const TENANT_A = asTenantId("acme");
+const TENANT_A = asTenantId("demo");
 const TENANT_B = asTenantId("globex");
 const USER = asUserId("user-1");
 

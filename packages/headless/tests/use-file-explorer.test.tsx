@@ -5,7 +5,7 @@ import { useFileExplorer } from "@/use-file-explorer";
 
 const makeNode = (id: string, kind: FileNode["kind"]): FileNode => ({
   id,
-  tenantId: asTenantId("acme"),
+  tenantId: asTenantId("demo"),
   parentId: null,
   name: id,
   path: `/${id}`,
@@ -29,7 +29,7 @@ const renderExplorer = (onMove: ReturnType<typeof vi.fn>) => {
   }));
   return renderHook(() =>
     useFileExplorer({
-      tenantId: asTenantId("acme"),
+      tenantId: asTenantId("demo"),
       parentId: null,
       listFiles,
       onMove,

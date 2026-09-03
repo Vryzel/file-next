@@ -2,19 +2,19 @@ import { describe, it, expect } from "vitest";
 import { parseReconcileArgs, runReconcile } from "@/reconcile";
 
 describe("parseReconcileArgs", () => {
-  it("parses --tenant=acme", () => {
-    const result = parseReconcileArgs(["--tenant=acme"]);
-    expect(result).toEqual({ tenant: "acme", dryRun: false });
+  it("parses --tenant=demo", () => {
+    const result = parseReconcileArgs(["--tenant=demo"]);
+    expect(result).toEqual({ tenant: "demo", dryRun: false });
   });
 
-  it("parses -t acme (short form)", () => {
-    const result = parseReconcileArgs(["-t", "acme"]);
-    expect(result).toEqual({ tenant: "acme", dryRun: false });
+  it("parses -t demo (short form)", () => {
+    const result = parseReconcileArgs(["-t", "demo"]);
+    expect(result).toEqual({ tenant: "demo", dryRun: false });
   });
 
   it("parses --dry-run", () => {
-    const result = parseReconcileArgs(["--tenant=acme", "--dry-run"]);
-    expect(result).toEqual({ tenant: "acme", dryRun: true });
+    const result = parseReconcileArgs(["--tenant=demo", "--dry-run"]);
+    expect(result).toEqual({ tenant: "demo", dryRun: true });
   });
 
   it("rejects missing tenant", () => {
@@ -33,7 +33,7 @@ describe("parseReconcileArgs", () => {
 
 describe("runReconcile", () => {
   it("reports no drift when both arrays are empty (exit 0)", async () => {
-    const result = await runReconcile({ tenant: "acme", dryRun: true });
+    const result = await runReconcile({ tenant: "demo", dryRun: true });
     expect(result.drift.missingInS3).toEqual([]);
     expect(result.drift.orphansInS3).toEqual([]);
     expect(result.hadDrift).toBe(false);
@@ -41,7 +41,7 @@ describe("runReconcile", () => {
 
   it("reports drift when missingInS3 is non-empty", async () => {
     const result = await runReconcile(
-      { tenant: "acme", dryRun: false },
+      { tenant: "demo", dryRun: false },
       {
         runSync: async () => ({
           missingInS3: ["a.txt", "b.txt"],
@@ -57,7 +57,7 @@ describe("runReconcile", () => {
 
   it("reports drift when orphansInS3 is non-empty", async () => {
     const result = await runReconcile(
-      { tenant: "acme", dryRun: false },
+      { tenant: "demo", dryRun: false },
       {
         runSync: async () => ({
           missingInS3: [],
@@ -72,7 +72,7 @@ describe("runReconcile", () => {
 
   it("fixedCount is independent of hadDrift", async () => {
     const result = await runReconcile(
-      { tenant: "acme", dryRun: false },
+      { tenant: "demo", dryRun: false },
       {
         runSync: async () => ({
           missingInS3: [],

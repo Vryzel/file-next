@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryStore } from "@/metadata/memory-store";
 import { asTenantId, asUserId, asS3Key } from "@/types/branded";
 
-const tenant = asTenantId("acme");
+const tenant = asTenantId("demo");
 const user = asUserId("u1");
 
 describe("MetadataStore extras", () => {

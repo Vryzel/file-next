@@ -41,7 +41,7 @@ import { asTenantId, asUserId, type FileNode } from "@vryzel/file-next";
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const TENANT = asTenantId("acme");
+const TENANT = asTenantId("demo");
 const OWNER = asUserId("user-1");
 const baseTs = new Date("2026-06-17T12:00:00Z");
 

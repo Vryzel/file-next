@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.5 — 2026-09-03
+
+- UI/headless npm listings say they require `@vryzel/file-next`. Install commands include the peers.
+- Example tenant id is `demo`, not `acme`.
+
 ## 0.4.4 — 2026-09-03
 
 - Package READMEs and the repo README link the [live demo](https://file-next-test-production.up.railway.app).

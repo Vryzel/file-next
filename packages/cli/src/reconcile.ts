@@ -3,8 +3,8 @@
  * the S3 bucket and the metadata index.
  *
  * Usage:
- *   file-next reconcile --tenant=acme
- *   file-next reconcile --tenant=acme --dry-run
+ *   file-next reconcile --tenant=demo
+ *   file-next reconcile --tenant=demo --dry-run
  *
  * Exit codes:
  *   0 — no drift detected (or all drift fixed)

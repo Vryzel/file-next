@@ -50,7 +50,7 @@ export function FileExplorerDemo(): React.ReactElement {
 
   return (
     <FileExplorer
-      tenantId="acme"
+      tenantId="demo"
       parentId={parentId}
       refreshKey={refreshKey}
       usedBytes={usedBytes}
