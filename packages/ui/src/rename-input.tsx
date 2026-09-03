@@ -34,7 +34,7 @@ export function RenameInput({
     if (done.current) return;
     done.current = true;
     const trimmed = next?.trim() ?? "";
-    if (!trimmed || trimmed === name) {
+    if (!trimmed) {
       onCancel();
       return;
     }
