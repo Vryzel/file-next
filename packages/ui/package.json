@@ -1,7 +1,7 @@
 {
   "name": "@vryzel/file-next-ui",
-  "version": "0.4.4",
-  "description": "Ready-to-use file explorer UI for file-next. Tailwind classes, composable pieces, and a default FileExplorer.",
+  "version": "0.4.5",
+  "description": "File explorer UI for file-next. Requires @vryzel/file-next and @vryzel/file-next-headless.",
   "type": "module",
   "license": "MIT",
   "repository": "https://github.com/Vryzel/file-next.git",

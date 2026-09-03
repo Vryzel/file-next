@@ -29,7 +29,7 @@ const makeNode = (
   overrides: Partial<FileNode> = {},
 ): FileNode => ({
   id,
-  tenantId: asTenantId("acme"),
+  tenantId: asTenantId("demo"),
   parentId: "root",
   name: `${id}.txt`,
   path: `/${id}.txt`,

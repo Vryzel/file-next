@@ -43,7 +43,7 @@ export const actions = createServerActions({
   fs,
   writeThrough: createWriteThrough(fs, store),
   getAuth: () => ({
-    tenantId: asTenantId("acme"),
+    tenantId: asTenantId("demo"),
     userId: asUserId("user-1"),
   }),
 });
@@ -57,7 +57,7 @@ import { FileExplorer } from "@vryzel/file-next-ui";
 
 <FileExplorer
   className="h-[70vh] overflow-hidden rounded-[10px] border"
-  tenantId="acme"
+  tenantId="demo"
   parentId={folderId}
   listFiles={listFiles}
   searchFiles={searchFiles}

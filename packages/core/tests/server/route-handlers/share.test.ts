@@ -4,7 +4,7 @@ import { createMemoryStore } from "@/metadata/memory-store";
 import { createMemoryFileSystem } from "@/storage/factory";
 import { asTenantId, asUserId, asS3Key } from "@/types/branded";
 
-const TENANT = asTenantId("acme");
+const TENANT = asTenantId("demo");
 const USER = asUserId("user-1");
 
 describe("createShareRouteHandler", () => {

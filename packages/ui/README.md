@@ -1,12 +1,14 @@
 # @vryzel/file-next-ui
 
-Ready-made file explorer for Next.js. Import `FileExplorer`, pass server callbacks, done. Or compose the pieces.
+Requires `@vryzel/file-next` and `@vryzel/file-next-headless`. This package is only the explorer UI — not a filesystem.
 
 [Live demo](https://file-next-test-production.up.railway.app)
 
 ```bash
-pnpm add @vryzel/file-next-ui
+pnpm add @vryzel/file-next @vryzel/file-next-headless @vryzel/file-next-ui
 ```
+
+Then import `FileExplorer`, pass server callbacks. Or compose the pieces.
 
 Scan the package so Tailwind keeps the classes:
 
@@ -28,7 +30,7 @@ import { FileExplorer } from "@vryzel/file-next-ui";
 
 <FileExplorer
   className="h-[70vh] overflow-hidden rounded-[10px] border border-border bg-card"
-  tenantId="acme"
+  tenantId="demo"
   parentId={folderId}
   listFiles={listFiles}
   searchFiles={searchFiles}
@@ -70,7 +72,7 @@ What you get with `FileExplorer`:
 
 - List / grid, sort, persisted view (`persistViewKey`)
 - Search, trash, upload (multi-file + OS drop)
-- New folder / rename dialogs (not `window.prompt`)
+- New folder / rename in place (Enter or blur saves, Escape cancels)
 - Multi-select, shift-click, ⌘A, copy/paste, drag onto folders
 - Pagination (`limit` 50 + Load more)
 - Quota footer, selection toast, upload queue

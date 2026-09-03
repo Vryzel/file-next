@@ -45,7 +45,7 @@ export const actions = createServerActions({
   fs,
   writeThrough: createWriteThrough(fs, store),
   getAuth: () => ({
-    tenantId: asTenantId("acme"),
+    tenantId: asTenantId("demo"),
     userId: asUserId("user-1"),
   }),
 });
@@ -140,8 +140,8 @@ Missing config throws `FileSystemError` (not retryable).
 ### 6. Multi-tenant keys
 
 ```ts
-const scoped = fs.forTenant("acme");
-// object keys are prefixed t/acme/{nodeId} unless prefixTenantKeys: false
+const scoped = fs.forTenant("demo");
+// object keys are prefixed t/demo/{nodeId} unless prefixTenantKeys: false
 ```
 
 Every store method also takes `tenantId`. Do not take tenant from the request body.

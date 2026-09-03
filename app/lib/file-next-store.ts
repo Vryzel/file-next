@@ -16,7 +16,7 @@ import { createServerActions } from "@vryzel/file-next/server";
 import { createWriteThrough } from "@vryzel/file-next/sync";
 import { DEMO_QUOTA_BYTES } from "./constants";
 
-export const DEMO_TENANT = asTenantId("acme");
+export const DEMO_TENANT = asTenantId("demo");
 export const DEMO_USER = asUserId("user-1");
 
 let _store: MetadataStore | null = null;

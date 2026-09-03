@@ -7,19 +7,19 @@ describe("createMemoryFileSystem + forTenant", () => {
   it("scopes object keys under t/{tenant}/", async () => {
     const store = createMemoryStore();
     const fs = createMemoryFileSystem({ store });
-    const acme = fs.forTenant("acme");
+    const demo = fs.forTenant("demo");
     const key = asS3Key("node-1");
-    const wrote = await acme.adapter.write({
+    const wrote = await demo.adapter.write({
       key,
       body: new TextEncoder().encode("hi"),
       contentType: "text/plain",
     });
     expect(wrote.ok).toBe(true);
 
-    const raw = await fs.adapter.exists({ key: asS3Key("t/acme/node-1") });
+    const raw = await fs.adapter.exists({ key: asS3Key("t/demo/node-1") });
     expect(raw.ok && raw.value.exists).toBe(true);
 
-    const relative = await acme.adapter.exists({ key });
+    const relative = await demo.adapter.exists({ key });
     expect(relative.ok && relative.value.exists).toBe(true);
 
     const other = await fs.forTenant("other").adapter.exists({ key });
@@ -30,14 +30,14 @@ describe("createMemoryFileSystem + forTenant", () => {
     const store = createMemoryStore();
     const fs = createMemoryFileSystem({ store, prefixTenantKeys: false });
     const key = asS3Key("node-1");
-    await fs.forTenant("acme").adapter.write({
+    await fs.forTenant("demo").adapter.write({
       key,
       body: new TextEncoder().encode("hi"),
       contentType: "text/plain",
     });
     const atRoot = await fs.adapter.exists({ key });
     expect(atRoot.ok && atRoot.value.exists).toBe(true);
-    const prefixed = await fs.adapter.exists({ key: asS3Key("t/acme/node-1") });
+    const prefixed = await fs.adapter.exists({ key: asS3Key("t/demo/node-1") });
     expect(prefixed.ok && prefixed.value.exists).toBe(false);
   });
 

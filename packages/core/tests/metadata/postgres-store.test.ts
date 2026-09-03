@@ -35,7 +35,7 @@ const TEST_URL = POSTGRES_TEST_URL;
 // inside this schema.
 const SCHEMA = `test_${randomUUID().replaceAll("-", "")}`;
 
-const TENANT_A = asTenantId("acme");
+const TENANT_A = asTenantId("demo");
 const TENANT_B = asTenantId("globex");
 const USER = asUserId("user-1");
 

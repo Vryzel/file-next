@@ -60,17 +60,17 @@ describe("dispatch", () => {
 
   it("dispatches reconcile — no drift → exit 0", async () => {
     const result = await dispatch(
-      ["reconcile", "--tenant=acme"],
+      ["reconcile", "--tenant=demo"],
       { reconcile: { runSync: async () => ({ missingInS3: [], orphansInS3: [], fixedCount: 0 }) } },
     );
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(/tenant=acme/);
+    expect(result.stdout).toMatch(/tenant=demo/);
     expect(result.stdout).toMatch(/missingInS3=0/);
   });
 
   it("dispatches reconcile — drift → exit 1", async () => {
     const result = await dispatch(
-      ["reconcile", "--tenant=acme", "--dry-run"],
+      ["reconcile", "--tenant=demo", "--dry-run"],
       {
         reconcile: {
           runSync: async () => ({

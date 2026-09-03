@@ -23,7 +23,7 @@ import { FileBrowser } from "@/components/file-next/file-browser";
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const TENANT = asTenantId("acme");
+const TENANT = asTenantId("demo");
 const OWNER = asUserId("user-1");
 const baseTs = new Date("2026-06-17T12:00:00Z");
 

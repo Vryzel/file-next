@@ -11,7 +11,7 @@ describe("FileExplorer", () => {
   it("renders the default empty folder", async () => {
     render(
       <FileExplorer
-        tenantId="acme"
+        tenantId="demo"
         parentId={null}
         listFiles={emptyList}
         actions={{

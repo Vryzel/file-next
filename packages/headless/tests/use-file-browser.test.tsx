@@ -22,7 +22,7 @@ import { asTenantId, type FileNode } from "@vryzel/file-next";
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const TENANT = asTenantId("acme");
+const TENANT = asTenantId("demo");
 
 const makeFile = (overrides: Partial<FileNode> = {}): FileNode => ({
   id: "n-1",

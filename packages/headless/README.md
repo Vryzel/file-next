@@ -5,7 +5,7 @@ Headless React hooks for file-next. No UI, no Tailwind, no Radix. You inject ser
 [Live demo](https://file-next-test-production.up.railway.app)
 
 ```bash
-pnpm add @vryzel/file-next-headless
+pnpm add @vryzel/file-next @vryzel/file-next-headless
 ```
 
 Peer: `react`, `@vryzel/file-next`. Safe in Client Components — it never imports `server-only`.
@@ -21,7 +21,7 @@ import { listFiles } from "./actions"; // "use server"
 export function Folder({ parentId }: { parentId: string | null }) {
   const { status, files, error, refetch } = useFileBrowser({
     listFiles,
-    tenantId: asTenantId("acme"),
+    tenantId: asTenantId("demo"),
     parentId,
     autoFetch: true,
   });

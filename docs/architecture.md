@@ -32,7 +32,7 @@ Browser ──► Next.js (your code)
 
 ## Tenant isolation
 
-1. **Prefix** — `forTenant('acme')` writes to `t/acme/{nodeId}`.
+1. **Prefix** — `forTenant('demo')` writes to `t/demo/{nodeId}`.
 2. **App filter** — every store method takes `tenantId`.
 3. **Postgres RLS** — `SET LOCAL app.current_tenant` + `FORCE ROW LEVEL SECURITY` on `nodes` and `pending_orphans`.
 
