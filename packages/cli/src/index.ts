@@ -19,7 +19,7 @@ import { parseMigrateArgs, runMigrate, type MigrateHooks } from "./migrate.js";
 import { parseReconcileArgs, runReconcile, type ReconcileHooks } from "./reconcile.js";
 import { runDoctor, formatDoctorReport } from "./doctor.js";
 
-export const VERSION = "0.4.1";
+export const VERSION = "0.4.2";
 
 export function printHelp(version: string = VERSION): string {
   return `file-next CLI v${version}

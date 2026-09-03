@@ -360,6 +360,37 @@ export const createMemoryStore = (): MetadataStore => {
       return ok(undefined);
     },
 
+    async purgeNode(input) {
+      const n = nodes.get(input.id);
+      if (!n || n.tenantId !== input.tenantId || n.deletedAt === null) {
+        return err(
+          new FileSystemError({
+            code: "NotFound",
+            message: `Trashed node ${input.id} not found`,
+            retryable: false,
+          }),
+        );
+      }
+      const prefix = `${n.path}/`;
+      const s3Keys: string[] = [];
+      const ids: string[] = [];
+      for (const node of nodes.values()) {
+        if (node.tenantId !== input.tenantId || node.deletedAt === null) continue;
+        if (node.id !== n.id && !node.path.startsWith(prefix)) continue;
+        ids.push(node.id);
+        if (node.kind === "file" && node.s3Key) s3Keys.push(node.s3Key);
+      }
+      for (const id of ids) {
+        const node = nodes.get(id);
+        if (node) removeFromChildrenIndex(node);
+        nodes.delete(id);
+      }
+      for (const [token, share] of shares) {
+        if (ids.includes(share.nodeId)) shares.delete(token);
+      }
+      return ok({ s3Keys });
+    },
+
     async updateMetadata(input: UpdateMetadataInput): Promise<Result<FileNode, FileSystemError>> {
       const n = nodes.get(input.id);
       if (!n || n.tenantId !== input.tenantId || n.deletedAt !== null) {

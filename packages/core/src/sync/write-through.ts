@@ -111,6 +111,9 @@ export const createWriteThrough = (
   deleteThroughFile: (
     input: DeleteThroughFileInput,
   ) => Promise<Result<void, FileSystemError>>;
+  purgeThroughFile: (
+    input: { tenantId: string; id: string },
+  ) => Promise<Result<void, FileSystemError>>;
   copyThroughFile: (
     input: CopyThroughFileInput,
   ) => Promise<Result<FileNode, FileSystemError>>;
@@ -256,6 +259,29 @@ export const createWriteThrough = (
       }
     }
 
+    return ok(undefined);
+  };
+
+  const purgeThroughFile = async (input: {
+    tenantId: string;
+    id: string;
+  }): Promise<Result<void, FileSystemError>> => {
+    const tenantId = asTenantId(input.tenantId);
+    await drainPendingOrphansFor(fs, store, tenantId);
+    const adapter = scopedFs(fs, tenantId).adapter;
+    const purged = await store.purgeNode({ tenantId, id: input.id });
+    if (!purged.ok) return purged;
+    for (const key of purged.value.s3Keys) {
+      const del = await adapter.delete({ key: asS3Key(key) });
+      if (!del.ok) {
+        await store.enqueueOrphan({
+          tenantId,
+          s3Key: asS3Key(key),
+          metadataId: input.id,
+          reason: del.error.message,
+        });
+      }
+    }
     return ok(undefined);
   };
 
@@ -406,6 +432,7 @@ export const createWriteThrough = (
   return {
     writeThroughFile,
     deleteThroughFile,
+    purgeThroughFile,
     copyThroughFile,
     confirmUpload,
     reconcile,

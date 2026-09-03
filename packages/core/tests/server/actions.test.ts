@@ -238,6 +238,45 @@ describe("PR 7a: moveFileAction — metadata-only in v0.1", () => {
   });
 });
 
+describe("purgeNode", () => {
+  it("hard-deletes a trashed file", async () => {
+    const c = await store.createNode({
+      tenantId: TENANT,
+      parentId: null,
+      name: "gone.txt",
+      kind: "file",
+      size: 1,
+      mimeType: "text/plain",
+      s3Key: "gone.txt",
+      ownerId: USER,
+    });
+    if (!c.ok) throw new Error("setup");
+    await actions.deleteFile({ id: c.value.id });
+    const purged = await actions.purgeNode({ id: c.value.id });
+    expect(purged.ok).toBe(true);
+    const trash = await actions.listTrash();
+    expect(trash.ok && trash.value.items).toEqual([]);
+  });
+
+  it("returns NotFound for a live file", async () => {
+    const c = await store.createNode({
+      tenantId: TENANT,
+      parentId: null,
+      name: "live.txt",
+      kind: "file",
+      size: 1,
+      mimeType: "text/plain",
+      s3Key: "live.txt",
+      ownerId: USER,
+    });
+    if (!c.ok) throw new Error("setup");
+    const r = await actions.purgeNode({ id: c.value.id });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error.code).toBe("NotFound");
+  });
+});
+
 describe("PR 7a: setMetadataAction — store.updateMetadata", () => {
   it("merges new metadata into existing", async () => {
     const c = await store.createNode({

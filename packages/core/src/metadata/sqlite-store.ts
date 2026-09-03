@@ -87,6 +87,7 @@ import {
 } from "@/types/result";
 import { FileSystemError } from "@/errors";
 import { asS3Key, asTenantId, asUserId } from "@/types/branded";
+import type { TenantId } from "@/types/branded";
 import { sanitizeFts5Query } from "./sanitize";
 import { normalizeNodeName } from "./node-name";
 import { decodeCursor, pageCursor } from "./cursor";
@@ -186,7 +187,7 @@ const rowToFileNode = (row: NodeRow): FileNode => ({
 // Migrations
 // ---------------------------------------------------------------------------
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const MIGRATION_SQL = `
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -271,7 +272,8 @@ WHEN new.deleted_at IS NULL BEGIN
   INSERT INTO nodes_fts(rowid, name) VALUES (new.rowid, new.name);
 END;
 
-CREATE TRIGGER IF NOT EXISTS nodes_fts_ad AFTER DELETE ON nodes BEGIN
+CREATE TRIGGER IF NOT EXISTS nodes_fts_ad AFTER DELETE ON nodes
+WHEN old.deleted_at IS NULL BEGIN
   INSERT INTO nodes_fts(nodes_fts, rowid, name) VALUES('delete', old.rowid, old.name);
 END;
 
@@ -282,8 +284,42 @@ CREATE TRIGGER IF NOT EXISTS nodes_fts_au AFTER UPDATE ON nodes BEGIN
 END;
 `;
 
+const FTS_REBUILD_SQL = `
+DROP TRIGGER IF EXISTS nodes_fts_ai;
+DROP TRIGGER IF EXISTS nodes_fts_ad;
+DROP TRIGGER IF EXISTS nodes_fts_au;
+DROP TABLE IF EXISTS nodes_fts;
+CREATE VIRTUAL TABLE nodes_fts USING fts5(
+  name,
+  content='nodes',
+  content_rowid='rowid',
+  tokenize='unicode61 remove_diacritics 2'
+);
+CREATE TRIGGER nodes_fts_ai AFTER INSERT ON nodes
+WHEN new.deleted_at IS NULL BEGIN
+  INSERT INTO nodes_fts(rowid, name) VALUES (new.rowid, new.name);
+END;
+CREATE TRIGGER nodes_fts_ad AFTER DELETE ON nodes
+WHEN old.deleted_at IS NULL BEGIN
+  INSERT INTO nodes_fts(nodes_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+END;
+CREATE TRIGGER nodes_fts_au AFTER UPDATE ON nodes BEGIN
+  INSERT INTO nodes_fts(nodes_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+  INSERT INTO nodes_fts(rowid, name)
+    SELECT new.rowid, new.name WHERE new.deleted_at IS NULL;
+END;
+INSERT INTO nodes_fts(rowid, name) SELECT rowid, name FROM nodes WHERE deleted_at IS NULL;
+`;
+
 const runMigrations = (db: BetterSqliteDatabase): void => {
   db.exec(MIGRATION_SQL);
+  const row = db
+    .prepare("SELECT value FROM schema_meta WHERE key = 'version'")
+    .get() as { value: string } | undefined;
+  const version = row ? Number(row.value) : 0;
+  if (!Number.isFinite(version) || version < 4) {
+    db.exec(FTS_REBUILD_SQL);
+  }
   db.prepare(
     "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', ?)",
   ).run(String(SCHEMA_VERSION));
@@ -349,6 +385,7 @@ export const createSqliteStore = (
     listChildren: wrap((s, i) => s.listChildren(i)),
     moveNode: wrap((s, i) => s.moveNode(i)),
     deleteNode: wrap((s, i) => s.deleteNode(i)),
+    purgeNode: wrap((s, i) => s.purgeNode(i)),
     updateMetadata: wrap((s, i) => s.updateMetadata(i)),
     search: wrap((s, i) => s.search(i)),
     getPath: wrap((s, i) => s.getPath(i)),
@@ -809,6 +846,43 @@ const buildInner = (
         stmtTombstone.run(now, now, input.id);
       }
       return ok(undefined);
+    },
+
+    async purgeNode(input: {
+      tenantId: TenantId;
+      id: string;
+    }): Promise<Result<{ s3Keys: ReadonlyArray<string> }, FileSystemError>> {
+      const node = db
+        .prepare(
+          `SELECT id, path FROM nodes WHERE id = ? AND tenant_id = ? AND deleted_at IS NOT NULL`,
+        )
+        .get(input.id, input.tenantId) as { id: string; path: string } | undefined;
+      if (!node) {
+        return err(
+          new FileSystemError({
+            code: "NotFound",
+            message: `Trashed node ${input.id} not found`,
+            retryable: false,
+          }),
+        );
+      }
+      const like = `${node.path}/%`;
+      const files = db
+        .prepare(
+          `SELECT s3_key FROM nodes
+           WHERE tenant_id = ? AND deleted_at IS NOT NULL AND kind = 'file' AND s3_key != ''
+             AND (id = ? OR path LIKE ?)`,
+        )
+        .all(input.tenantId, input.id, like) as Array<{ s3_key: string }>;
+      db.prepare(
+        `DELETE FROM shares WHERE tenant_id = ? AND node_id IN (
+           SELECT id FROM nodes WHERE tenant_id = ? AND deleted_at IS NOT NULL AND (id = ? OR path LIKE ?)
+         )`,
+      ).run(input.tenantId, input.tenantId, input.id, like);
+      db.prepare(
+        `DELETE FROM nodes WHERE tenant_id = ? AND deleted_at IS NOT NULL AND (id = ? OR path LIKE ?)`,
+      ).run(input.tenantId, input.id, like);
+      return ok({ s3Keys: files.map((row) => row.s3_key) });
     },
 
     async updateMetadata(
