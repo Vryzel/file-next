@@ -23,6 +23,7 @@ import { ExplorerClipboardToast, ExplorerSelectionToast } from "./explorer-selec
 import { UploadQueueProvider, useUploadEnqueue } from "./upload-queue";
 import { ExplorerLabelsProvider, useExplorerLabels, type ExplorerLabels } from "./labels";
 import { cn } from "./cn";
+import { absoluteShareUrl } from "./share-url";
 
 export type { ExplorerColumn, SortDirection };
 
@@ -41,6 +42,7 @@ export interface FileExplorerActions {
   readonly renameFile: (id: string, newName: string) => Promise<void>;
   readonly restoreNode?: (input: { id: string }) => Promise<unknown>;
   readonly purgeNode?: (input: { id: string }) => Promise<unknown>;
+  /** Return the openable URL to copy (presigned GET). */
   readonly createShare?: (input: { id: string }) => Promise<string>;
   readonly createFolder?: (input: {
     name: string;
@@ -857,7 +859,11 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
                   if (file.kind !== "file") continue;
                   tokens.push(await actions.createShare!({ id: file.id }));
                 }
-                if (tokens.length > 0) await navigator.clipboard.writeText(tokens.join("\n"));
+                if (tokens.length > 0) {
+                  await navigator.clipboard.writeText(
+                    tokens.map(absoluteShareUrl).join("\n"),
+                  );
+                }
               }
             : undefined
         }

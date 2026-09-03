@@ -20,6 +20,7 @@ export {
   createServerActions,
   createUploadRouteHandler,
   createDownloadRouteHandler,
+  createShareRouteHandler,
 } from "./index";
 
 export type {
@@ -31,4 +32,5 @@ export type {
   UploadRouteHandlerResult,
   CreateDownloadRouteHandlerOptions,
   DownloadRouteHandlerResult,
+  CreateShareRouteHandlerOptions,
 } from "./index";
