@@ -2,6 +2,8 @@
 
 S3/R2 filesystem for Next.js. Bytes in your bucket. The folder tree in **your** SQLite or Postgres. Tenant comes from the server, never from the client.
 
+[Live demo](https://file-next-test-production.up.railway.app)
+
 ```bash
 pnpm add @vryzel/file-next
 # optional, depending on the store:

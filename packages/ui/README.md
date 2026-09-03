@@ -2,6 +2,8 @@
 
 Ready-made file explorer for Next.js. Import `FileExplorer`, pass server callbacks, done. Or compose the pieces.
 
+[Live demo](https://file-next-test-production.up.railway.app)
+
 ```bash
 pnpm add @vryzel/file-next-ui
 ```
