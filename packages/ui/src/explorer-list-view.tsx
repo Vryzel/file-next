@@ -6,6 +6,7 @@ import { cn } from "./cn";
 import { FileIcon } from "./file-icon";
 import type { FileNode } from "./types";
 import { useExplorerLabels } from "./labels";
+import { RenameInput } from "./rename-input";
 import { useCoarsePointer, useExplorerItemPointer } from "./use-explorer-item-pointer";
 
 export type ExplorerColumn = "name" | "size" | "modified" | "kind";
@@ -28,6 +29,9 @@ export interface ExplorerListViewProps {
   readonly sortKey?: ExplorerColumn;
   readonly sortDirection?: SortDirection;
   readonly onSortChange?: (key: ExplorerColumn) => void;
+  readonly renamingId?: string | null;
+  readonly onRenameCommit?: (name: string) => void;
+  readonly onRenameCancel?: () => void;
   readonly className?: string;
 }
 
@@ -53,6 +57,9 @@ export function ExplorerListView(props: ExplorerListViewProps): React.ReactEleme
     sortKey,
     sortDirection,
     onSortChange,
+    renamingId,
+    onRenameCommit,
+    onRenameCancel,
     className,
   } = props;
   const labels = useExplorerLabels();
@@ -98,6 +105,9 @@ export function ExplorerListView(props: ExplorerListViewProps): React.ReactEleme
               onDragEnd={onDragEnd}
               onDrop={onDrop}
               onDragOverRow={onDragOverRow}
+              renaming={file.id === renamingId}
+              onRenameCommit={onRenameCommit}
+              onRenameCancel={onRenameCancel}
             />
           ))}
         </ul>
@@ -123,6 +133,9 @@ function ExplorerListRow({
   onDragEnd,
   onDrop,
   onDragOverRow,
+  renaming,
+  onRenameCommit,
+  onRenameCancel,
 }: {
   file: FileNode;
   idx: number;
@@ -140,6 +153,9 @@ function ExplorerListRow({
   onDragEnd: () => void;
   onDrop: (destinationFolderId: string) => void;
   onDragOverRow: (id: string | null) => void;
+  renaming: boolean;
+  onRenameCommit?: (name: string) => void;
+  onRenameCancel?: () => void;
 }): React.ReactElement {
   const labels = useExplorerLabels();
   const isFolder = file.kind === "folder";
@@ -150,17 +166,18 @@ function ExplorerListRow({
       role="row"
       data-file-id={file.id}
       aria-selected={selected}
-      draggable={!coarse}
+      draggable={!coarse && !renaming}
       onDragStart={(e: DragEvent<HTMLLIElement>) => {
         e.dataTransfer.setData(DRAG_MIME, file.id);
         e.dataTransfer.effectAllowed = "move";
         onDragStart(file.id);
       }}
       onDragEnd={onDragEnd}
-      onPointerDown={pointer.onPointerDown}
-      onClick={pointer.onClick}
-      onDoubleClick={pointer.onDoubleClick}
+      onPointerDown={renaming ? undefined : pointer.onPointerDown}
+      onClick={renaming ? undefined : pointer.onClick}
+      onDoubleClick={renaming ? undefined : pointer.onDoubleClick}
       onKeyDown={(e: KeyboardEvent<HTMLLIElement>) => {
+        if (renaming) return;
         if (e.key === "Enter") {
           e.preventDefault();
           onActivate(file);
@@ -210,7 +227,17 @@ function ExplorerListRow({
         <FileIcon kind={file.kind} mimeType={file.mimeType} className="size-5 text-current sm:size-4" />
       </span>
       <span className="flex min-w-0 items-center gap-1.5">
-        <span className={cn("truncate", isFolder && "text-primary")}>{file.name}</span>
+        {renaming && onRenameCommit && onRenameCancel ? (
+          <RenameInput
+            name={file.name}
+            kind={file.kind}
+            ariaLabel={labels.rename}
+            onCommit={onRenameCommit}
+            onCancel={onRenameCancel}
+          />
+        ) : (
+          <span className={cn("truncate", isFolder && "text-primary")}>{file.name}</span>
+        )}
         {isProtected ? (
           <span className="flex shrink-0 items-center gap-0.5 rounded-[10px] bg-primary/10 px-1.5 text-[10px] text-primary">
             <Link2 aria-hidden="true" className="size-2.5" />

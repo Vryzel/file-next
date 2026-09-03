@@ -629,6 +629,13 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
     ],
   );
 
+  const commitRename = (name: string) => {
+    if (!renameTarget) return;
+    const target = renameTarget;
+    setRenameTarget(null);
+    void actions.renameFile(target.id, name).then(() => reload());
+  };
+
   const openUpload = () => uploadInputRef.current?.click();
 
   return (
@@ -742,6 +749,9 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
               sortKey={sortKey}
               sortDirection={sortDir}
               onSortChange={handleSortChange}
+              renamingId={renameTarget?.id ?? null}
+              onRenameCommit={commitRename}
+              onRenameCancel={() => setRenameTarget(null)}
             />
           </div>
         ) : (
@@ -765,6 +775,9 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
               draggingIds={draggingIds}
               dropTargetId={explorer.dropTargetId}
               onDragOverRow={explorer.setDropTarget}
+              renamingId={renameTarget?.id ?? null}
+              onRenameCommit={commitRename}
+              onRenameCancel={() => setRenameTarget(null)}
             />
           </div>
         )}
@@ -895,22 +908,6 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
         onOpenChange={setFolderOpen}
         onCreate={async (name) => {
           await actions.createFolder?.({ name, parentId });
-          await reload();
-        }}
-      />
-      <CreateFolderDialog
-        open={Boolean(renameTarget)}
-        onOpenChange={(open) => {
-          if (!open) setRenameTarget(null);
-        }}
-        title={labels.rename}
-        description={labels.renameHint}
-        confirmLabel={labels.rename}
-        initialName={renameTarget?.name ?? ""}
-        onCreate={async (name) => {
-          if (!renameTarget) return;
-          await actions.renameFile(renameTarget.id, name);
-          setRenameTarget(null);
           await reload();
         }}
       />
