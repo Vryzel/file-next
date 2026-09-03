@@ -601,7 +601,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
       if ((event.key === "Delete" || event.key === "Backspace") && selectedFiles.length > 0) {
         event.preventDefault();
         if (trashOpen) {
-          setPurgeTargets(selectedFiles);
+          if (actions.purgeNode) setPurgeTargets(selectedFiles);
           return;
         }
         if (selectedFiles.some((file) => protectedSet.has(file.id))) return;
@@ -830,7 +830,9 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
         onDownload={onDownload}
         onRename={setRenameTarget}
         onRequestDelete={(file) => setDeleteTargets([file])}
-        onRequestPurge={(file) => setPurgeTargets([file])}
+        onRequestPurge={
+          actions.purgeNode ? (file) => setPurgeTargets([file]) : undefined
+        }
         onCopy={(file) => copyToClipboard([file])}
         onPaste={
           clipboard.length > 0 && !trashOpen
@@ -869,7 +871,9 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
               }
             : undefined
         }
-        onPurge={() => setPurgeTargets(selectedFiles)}
+        onPurge={
+          actions.purgeNode ? () => setPurgeTargets(selectedFiles) : undefined
+        }
         onClear={clearSelection}
       />
       <div className="fixed right-4 bottom-4 z-50 w-[min(22rem,calc(100vw-2rem))]">

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 — 2026-09-03
+
+- `purgeNode`: hard-delete from trash (metadata + leftover S3 keys).
+- SQLite FTS: do not FTS-delete already-tombstoned rows (`SQLITE_CORRUPT_VTAB`). Schema v4 rebuilds the index.
+- FileExplorer hides “Delete forever” unless `actions.purgeNode` is passed.
+
 ## 0.4.1 — 2026-09-02
 
 - Package READMEs: copy-paste use cases for core, headless, UI, and CLI.

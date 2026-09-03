@@ -445,6 +445,19 @@ describe("createSqliteStore — deleteNode", () => {
   });
 });
 
+describe("createSqliteStore — purgeNode", () => {
+  it("hard-deletes trash without corrupting FTS search", async () => {
+    const f = await store.createNode(baseFileInput({ name: "purge-me.txt" }));
+    if (!f.ok) throw new Error("setup");
+    await store.deleteNode({ tenantId: TENANT_A, id: f.value.id });
+    const purged = await store.purgeNode({ tenantId: TENANT_A, id: f.value.id });
+    expect(purged.ok).toBe(true);
+    const search = await store.search({ tenantId: TENANT_A, query: "purge-me" });
+    expect(search.ok).toBe(true);
+    if (search.ok) expect(search.value.items).toEqual([]);
+  });
+});
+
 describe("createSqliteStore — updateMetadata", () => {
   it("merges by default", async () => {
     const f = await store.createNode(baseFileInput({ metadata: { a: "1", b: "2" } }));

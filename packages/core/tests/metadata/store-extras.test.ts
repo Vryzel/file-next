@@ -40,5 +40,13 @@ describe("MetadataStore extras", () => {
     await store.revokeShare({ tenantId: tenant, token: share.value.token });
     const gone = await store.resolveShare({ token: share.value.token });
     expect(gone.ok && gone.value).toBeNull();
+
+    await store.deleteNode({ tenantId: tenant, id: "id-1" });
+    const purged = await store.purgeNode({ tenantId: tenant, id: "id-1" });
+    expect(purged.ok && purged.value.s3Keys).toEqual(["id-1"]);
+    const trashAfter = await store.listTrash({ tenantId: tenant });
+    expect(trashAfter.ok && trashAfter.value.items).toHaveLength(0);
+    const liveGone = await store.purgeNode({ tenantId: tenant, id: "id-1" });
+    expect(liveGone.ok).toBe(false);
   });
 });

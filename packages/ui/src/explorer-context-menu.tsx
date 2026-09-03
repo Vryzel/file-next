@@ -148,6 +148,8 @@ export function ExplorerContextMenu(
             <RotateCcw aria-hidden="true" className="size-4" />
             {labels.restore}
           </button>
+          {onRequestPurge || actions.purgeNode ? (
+            <>
           <div className="my-1 h-px bg-border" />
           <button
             type="button"
@@ -162,6 +164,8 @@ export function ExplorerContextMenu(
             <X aria-hidden="true" className="size-4" />
             {labels.deleteForever}
           </button>
+            </>
+          ) : null}
         </>
       ) : (
         <>

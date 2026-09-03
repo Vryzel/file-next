@@ -76,6 +76,7 @@ import {
 } from "@/types/result";
 import { FileSystemError } from "@/errors";
 import { asS3Key, asTenantId, asUserId } from "@/types/branded";
+import type { TenantId } from "@/types/branded";
 import { sanitizeLikePattern } from "./sanitize";
 import { decodeCursor, pageCursor } from "./cursor";
 import { normalizeNodeName } from "./node-name";
@@ -336,6 +337,7 @@ export const createPostgresStore = (
     listChildren: wrap((s, i) => s.listChildren(i)),
     moveNode: wrap((s, i) => s.moveNode(i)),
     deleteNode: wrap((s, i) => s.deleteNode(i)),
+    purgeNode: wrap((s, i) => s.purgeNode(i)),
     updateMetadata: wrap((s, i) => s.updateMetadata(i)),
     search: wrap((s, i) => s.search(i)),
     getPath: wrap((s, i) => s.getPath(i)),
@@ -749,6 +751,48 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
         );
       }
       return ok(undefined);
+    },
+
+    async purgeNode(input: {
+      tenantId: TenantId;
+      id: string;
+    }): Promise<Result<{ s3Keys: ReadonlyArray<string> }, FileSystemError>> {
+      await ensureInitialized();
+      const nodeRes = await q<{ id: string; path: string }>(input.tenantId,
+        `SELECT id, path FROM "${schema}".nodes
+         WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NOT NULL`,
+        [input.id, input.tenantId],
+      );
+      const node = nodeRes.rows[0];
+      if (!node) {
+        return err(
+          new FileSystemError({
+            code: "NotFound",
+            message: `Trashed node ${input.id} not found`,
+            retryable: false,
+          }),
+        );
+      }
+      const like = `${node.path}/%`;
+      const files = await q<{ s3_key: string }>(input.tenantId,
+        `SELECT s3_key FROM "${schema}".nodes
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND kind = 'file' AND s3_key <> ''
+           AND (id = $2 OR path LIKE $3)`,
+        [input.tenantId, input.id, like],
+      );
+      await q(input.tenantId,
+        `DELETE FROM "${schema}".shares WHERE tenant_id = $1 AND node_id IN (
+           SELECT id FROM "${schema}".nodes
+           WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND (id = $2 OR path LIKE $3)
+         )`,
+        [input.tenantId, input.id, like],
+      );
+      await q(input.tenantId,
+        `DELETE FROM "${schema}".nodes
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND (id = $2 OR path LIKE $3)`,
+        [input.tenantId, input.id, like],
+      );
+      return ok({ s3Keys: files.rows.map((row) => row.s3_key) });
     },
 
     async updateMetadata(

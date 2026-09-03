@@ -328,6 +328,22 @@ export const createServerActions = (deps: ServerActionsDeps) => {
     }
   };
 
+  const purgeNode = async (
+    input: z.infer<typeof RestoreNodeInputSchema>,
+  ): Promise<Result<void, FileSystemError>> => {
+    const parsed = RestoreNodeInputSchema.safeParse(input);
+    if (!parsed.success) return zodErr("Invalid purgeNode input", parsed);
+    try {
+      const auth = await authTenant();
+      return writeThrough.purgeThroughFile({
+        tenantId: auth.tenantId,
+        id: parsed.data.id,
+      });
+    } catch (e) {
+      return err(wrap(e, "InternalError", "purgeNode failed"));
+    }
+  };
+
   const createShare = async (
     input: z.infer<typeof CreateShareInputSchema>,
   ): Promise<Result<{ token: string }, FileSystemError>> => {
@@ -384,6 +400,7 @@ export const createServerActions = (deps: ServerActionsDeps) => {
     searchFiles,
     listTrash,
     restoreNode,
+    purgeNode,
     createShare,
     resolveShare,
     revokeShare,

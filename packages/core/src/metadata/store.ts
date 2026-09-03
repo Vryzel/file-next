@@ -198,6 +198,16 @@ export interface MetadataStore {
    */
   deleteNode(input: DeleteNodeInput): Promise<Result<void, FileSystemError>>;
 
+  /**
+   * Hard-delete a trashed node and its trashed descendants.
+   * Live nodes return NotFound. Returns S3 keys of files removed
+   * so the caller can delete objects.
+   */
+  purgeNode(input: {
+    tenantId: TenantId;
+    id: string;
+  }): Promise<Result<{ s3Keys: ReadonlyArray<string> }, FileSystemError>>;
+
   /** Update user metadata (merge or replace). */
   updateMetadata(
     input: UpdateMetadataInput,
