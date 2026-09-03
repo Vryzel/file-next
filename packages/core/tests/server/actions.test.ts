@@ -277,6 +277,45 @@ describe("purgeNode", () => {
   });
 });
 
+describe("createShare", () => {
+  it("returns a presigned download URL for a file", async () => {
+    const c = await store.createNode({
+      tenantId: TENANT,
+      parentId: null,
+      name: "share.txt",
+      kind: "file",
+      size: 1,
+      mimeType: "text/plain",
+      s3Key: "share.txt",
+      ownerId: USER,
+    });
+    if (!c.ok) throw new Error("setup");
+    const r = await actions.createShare({ id: c.value.id });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.token.length).toBeGreaterThan(0);
+    expect(r.value.url).toBe(`/api/share/${r.value.token}`);
+  });
+
+  it("rejects sharing a folder", async () => {
+    const c = await store.createNode({
+      tenantId: TENANT,
+      parentId: null,
+      name: "docs",
+      kind: "folder",
+      size: 0,
+      mimeType: "",
+      s3Key: "",
+      ownerId: USER,
+    });
+    if (!c.ok) throw new Error("setup");
+    const r = await actions.createShare({ id: c.value.id });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error.code).toBe("Conflict");
+  });
+});
+
 describe("PR 7a: setMetadataAction — store.updateMetadata", () => {
   it("merges new metadata into existing", async () => {
     const c = await store.createNode({

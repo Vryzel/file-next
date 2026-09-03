@@ -159,6 +159,16 @@ if (!listed.ok) throw listed.error;
 
 `listFiles` / `listTrash` accept `cursor` + `limit`.
 
+`createShare` returns `{ token, url }` where `url` is `/api/share/{token}` (your domain, not the bucket). Mount:
+
+```ts
+// app/api/share/[token]/route.ts
+import { createShareRouteHandler } from "@vryzel/file-next/server";
+export const GET = createShareRouteHandler({ store, fs });
+```
+
+The handler streams the object through Next.js. Folders cannot be shared this way. Optional `sharePathPrefix` on `createServerActions` (default `/api/share`).
+
 ### 8. Route handlers (upload / download)
 
 ```ts

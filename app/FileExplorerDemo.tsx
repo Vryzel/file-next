@@ -112,7 +112,7 @@ export function FileExplorerDemo(): React.ReactElement {
         createShare: async (input) => {
           const result = await createShareAction(input);
           if (!result.ok) throw result.error;
-          return result.value.token;
+          return result.value.url;
         },
       }}
     />

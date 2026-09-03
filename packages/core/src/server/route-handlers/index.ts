@@ -17,3 +17,5 @@ export type {
   CreateDownloadRouteHandlerOptions,
   DownloadRouteHandlerResult,
 } from "./download";
+export { createShareRouteHandler } from "./share";
+export type { CreateShareRouteHandlerOptions } from "./share";

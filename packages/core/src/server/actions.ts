@@ -101,10 +101,13 @@ export interface ServerActionsDeps {
   readonly writeThrough: CreateWriteThrough;
   readonly fs: FileSystem;
   readonly getAuth: () => AuthContext | Promise<AuthContext>;
+  /** App path prefix for share links. Default `/api/share`. */
+  readonly sharePathPrefix?: string;
 }
 
 export const createServerActions = (deps: ServerActionsDeps) => {
   const { store, writeThrough, fs, getAuth } = deps;
+  const sharePathPrefix = (deps.sharePathPrefix ?? "/api/share").replace(/\/+$/, "");
 
   const wrap = (e: unknown, code: FileSystemError["code"], message: string): FileSystemError => {
     if (e instanceof FileSystemError) return e;
@@ -346,14 +349,31 @@ export const createServerActions = (deps: ServerActionsDeps) => {
 
   const createShare = async (
     input: z.infer<typeof CreateShareInputSchema>,
-  ): Promise<Result<{ token: string }, FileSystemError>> => {
+  ): Promise<Result<{ token: string; url: string }, FileSystemError>> => {
     const parsed = CreateShareInputSchema.safeParse(input);
     if (!parsed.success) return zodErr("Invalid createShare input", parsed);
     try {
       const auth = await authTenant();
-      return store.createShare({
-        tenantId: asTenantId(auth.tenantId),
+      const tenantId = asTenantId(auth.tenantId);
+      const node = await store.getNode({ tenantId, id: parsed.data.id });
+      if (!node.ok) return node;
+      if (!node.value || node.value.kind !== "file" || !node.value.s3Key) {
+        return err(
+          new FileSystemError({
+            code: "Conflict",
+            message: "Only files can be shared as an openable link",
+            retryable: false,
+          }),
+        );
+      }
+      const share = await store.createShare({
+        tenantId,
         nodeId: parsed.data.id,
+      });
+      if (!share.ok) return share;
+      return ok({
+        token: share.value.token,
+        url: `${sharePathPrefix}/${share.value.token}`,
       });
     } catch (e) {
       return err(wrap(e, "InternalError", "createShare failed"));

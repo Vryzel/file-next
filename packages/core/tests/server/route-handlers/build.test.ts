@@ -51,6 +51,7 @@ describe("T-051: @vryzel/file-next/server subpath build output", () => {
     // dts re-exports the route-handler + action factories.
     expect(content).toMatch(/createUploadRouteHandler/);
     expect(content).toMatch(/createDownloadRouteHandler/);
+    expect(content).toMatch(/createShareRouteHandler/);
     expect(content).toMatch(/createServerActions/);
   });
 });

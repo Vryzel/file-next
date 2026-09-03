@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3 — 2026-09-03
+
+- Share links are `/api/share/{token}` on the app origin. `createShareRouteHandler` streams the object so the URL never exposes the bucket or key.
+- Rename and new folder are inline (Finder-style). Enter or blur saves; Escape cancels. New folder defaults to `New folder`.
+
 ## 0.4.2 — 2026-09-03
 
 - `purgeNode`: hard-delete from trash (metadata + leftover S3 keys).

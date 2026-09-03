@@ -17,12 +17,12 @@ import { ExplorerListView, type ExplorerColumn, type SortDirection } from "./exp
 import { ExplorerGridView } from "./explorer-grid-view";
 import { ExplorerToolbar } from "./explorer-toolbar";
 import { ExplorerContextMenu, type ExplorerContextTarget } from "./explorer-context-menu";
-import { CreateFolderDialog } from "./create-folder-dialog";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
 import { ExplorerClipboardToast, ExplorerSelectionToast } from "./explorer-selection-toast";
 import { UploadQueueProvider, useUploadEnqueue } from "./upload-queue";
 import { ExplorerLabelsProvider, useExplorerLabels, type ExplorerLabels } from "./labels";
 import { cn } from "./cn";
+import { absoluteShareUrl } from "./share-url";
 
 export type { ExplorerColumn, SortDirection };
 
@@ -41,6 +41,7 @@ export interface FileExplorerActions {
   readonly renameFile: (id: string, newName: string) => Promise<void>;
   readonly restoreNode?: (input: { id: string }) => Promise<unknown>;
   readonly purgeNode?: (input: { id: string }) => Promise<unknown>;
+  /** Return the openable URL to copy (presigned GET). */
   readonly createShare?: (input: { id: string }) => Promise<string>;
   readonly createFolder?: (input: {
     name: string;
@@ -110,6 +111,39 @@ type ExplorerPrefs = {
 };
 
 const DEFAULT_PREFS: ExplorerPrefs = { view: "list", sortKey: "name", sortDir: "asc" };
+
+const DRAFT_FOLDER_ID = "__draft-folder__";
+
+function unusedFolderName(files: ReadonlyArray<FileNode>, base: string): string {
+  const taken = new Set(files.map((file) => file.name.toLowerCase()));
+  if (!taken.has(base.toLowerCase())) return base;
+  let n = 2;
+  while (taken.has(`${base} ${n}`.toLowerCase())) n += 1;
+  return `${base} ${n}`;
+}
+
+function draftFolder(
+  name: string,
+  tenantId: FileNode["tenantId"],
+  parentId: string | null,
+): FileNode {
+  return {
+    id: DRAFT_FOLDER_ID,
+    tenantId,
+    parentId,
+    name,
+    path: name,
+    kind: "folder",
+    size: 0,
+    mimeType: "",
+    s3Key: "",
+    ownerId: "" as FileNode["ownerId"],
+    metadata: {},
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    deletedAt: null,
+  };
+}
 
 function reviveFile(node: FileNode): FileNode {
   const asDate = (value: Date | string) => (value instanceof Date ? value : new Date(value));
@@ -258,7 +292,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
   const [prefsReady, setPrefsReady] = useState(!persistViewKey);
   const skipPrefsWrite = useRef(!persistViewKey);
   const [menu, setMenu] = useState<ExplorerContextTarget | null>(null);
-  const [folderOpen, setFolderOpen] = useState(false);
+  const [draftFolderName, setDraftFolderName] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<FileNode | null>(null);
   const [deleteTargets, setDeleteTargets] = useState<ReadonlyArray<FileNode>>([]);
   const [purgeTargets, setPurgeTargets] = useState<ReadonlyArray<FileNode>>([]);
@@ -457,6 +491,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
 
   const handleActivate = useCallback(
     (file: FileNode) => {
+      if (file.id === DRAFT_FOLDER_ID) return;
       if (file.kind === "folder") {
         onOpenFolder?.(file);
         return;
@@ -469,6 +504,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
   );
 
   const handleContextMenu = useCallback((file: FileNode, event: React.MouseEvent) => {
+    if (file.id === DRAFT_FOLDER_ID) return;
     setMenu({ kind: "item", file, x: event.clientX, y: event.clientY });
   }, []);
 
@@ -483,6 +519,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
 
   const handleSelect = useCallback(
     (file: FileNode, event: { shiftKey: boolean }) => {
+      if (file.id === DRAFT_FOLDER_ID) return;
       const id = file.id;
       if (event.shiftKey && anchorId.current) {
         const from = sortedFiles.findIndex((item) => item.id === anchorId.current);
@@ -627,6 +664,42 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
     ],
   );
 
+  const commitRename = (name: string) => {
+    if (draftFolderName != null) {
+      setDraftFolderName(null);
+      void actions.createFolder?.({ name, parentId }).then(() => reload());
+      return;
+    }
+    if (!renameTarget) return;
+    const target = renameTarget;
+    setRenameTarget(null);
+    if (name === target.name) return;
+    void actions.renameFile(target.id, name).then(() => reload());
+  };
+
+  const cancelRename = () => {
+    setDraftFolderName(null);
+    setRenameTarget(null);
+  };
+
+  const startCreateFolder = () => {
+    if (!actions.createFolder || trashOpen) return;
+    setMenu(null);
+    setRenameTarget(null);
+    setQuery("");
+    setDraftFolderName(unusedFolderName(pageItems, labels.newFolder));
+  };
+
+  const displayFiles = useMemo(() => {
+    if (draftFolderName == null) return sortedFiles;
+    return [
+      draftFolder(draftFolderName, tenantId as FileNode["tenantId"], parentId),
+      ...sortedFiles,
+    ];
+  }, [draftFolderName, parentId, sortedFiles, tenantId]);
+
+  const renamingId = draftFolderName != null ? DRAFT_FOLDER_ID : renameTarget?.id ?? null;
+
   const openUpload = () => uploadInputRef.current?.click();
 
   return (
@@ -677,7 +750,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
           view={explorer.view}
           onViewChange={explorer.setView}
           onUpload={requestUpload && !trashOpen ? openUpload : undefined}
-          onNewFolder={actions.createFolder && !trashOpen ? () => setFolderOpen(true) : undefined}
+          onNewFolder={actions.createFolder && !trashOpen ? startCreateFolder : undefined}
           query={query}
           onQueryChange={searchFiles ? setQuery : undefined}
           trashOpen={trashOpen}
@@ -697,7 +770,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {(overlayLoading || pageStatus === "loading") && sortedFiles.length === 0 ? (
+        {(overlayLoading || pageStatus === "loading") && displayFiles.length === 0 ? (
           <p className="px-4 py-12 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
             {labels.loading}
           </p>
@@ -705,7 +778,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
           <div className="border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {(overlayError ?? pageError)?.message ?? labels.folderCreateFailed}
           </div>
-        ) : sortedFiles.length === 0 ? (
+        ) : displayFiles.length === 0 ? (
           <div className="flex min-h-full flex-col justify-center px-4 py-16 text-center">
             <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
               {trashOpen ? labels.emptyTrash : query.trim() ? labels.noMatches : labels.emptyFolder}
@@ -724,7 +797,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
             }}
           >
             <ExplorerListView
-              files={sortedFiles}
+              files={displayFiles}
               protectedIds={protectedSet}
               selectedIds={selectedIds}
               onSelect={handleSelect}
@@ -740,6 +813,9 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
               sortKey={sortKey}
               sortDirection={sortDir}
               onSortChange={handleSortChange}
+              renamingId={renamingId}
+              onRenameCommit={commitRename}
+              onRenameCancel={cancelRename}
             />
           </div>
         ) : (
@@ -750,7 +826,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
             }}
           >
             <ExplorerGridView
-              files={sortedFiles}
+              files={displayFiles}
               protectedIds={protectedSet}
               selectedIds={selectedIds}
               onSelect={handleSelect}
@@ -763,6 +839,9 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
               draggingIds={draggingIds}
               dropTargetId={explorer.dropTargetId}
               onDragOverRow={explorer.setDropTarget}
+              renamingId={renamingId}
+              onRenameCommit={commitRename}
+              onRenameCancel={cancelRename}
             />
           </div>
         )}
@@ -839,7 +918,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
             ? (folder) => void pasteClipboard(folder ? folder.id : parentId)
             : undefined
         }
-        onNewFolder={actions.createFolder ? () => setFolderOpen(true) : undefined}
+        onNewFolder={actions.createFolder ? startCreateFolder : undefined}
         onUpload={requestUpload ? openUpload : undefined}
       />
 
@@ -857,7 +936,11 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
                   if (file.kind !== "file") continue;
                   tokens.push(await actions.createShare!({ id: file.id }));
                 }
-                if (tokens.length > 0) await navigator.clipboard.writeText(tokens.join("\n"));
+                if (tokens.length > 0) {
+                  await navigator.clipboard.writeText(
+                    tokens.map(absoluteShareUrl).join("\n"),
+                  );
+                }
               }
             : undefined
         }
@@ -884,30 +967,6 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
         />
       </div>
 
-      <CreateFolderDialog
-        open={folderOpen}
-        onOpenChange={setFolderOpen}
-        onCreate={async (name) => {
-          await actions.createFolder?.({ name, parentId });
-          await reload();
-        }}
-      />
-      <CreateFolderDialog
-        open={Boolean(renameTarget)}
-        onOpenChange={(open) => {
-          if (!open) setRenameTarget(null);
-        }}
-        title={labels.rename}
-        description={labels.renameHint}
-        confirmLabel={labels.rename}
-        initialName={renameTarget?.name ?? ""}
-        onCreate={async (name) => {
-          if (!renameTarget) return;
-          await actions.renameFile(renameTarget.id, name);
-          setRenameTarget(null);
-          await reload();
-        }}
-      />
       <ConfirmDeleteDialog
         open={deleteTargets.length > 0}
         names={deleteTargets.map((file) => file.name)}

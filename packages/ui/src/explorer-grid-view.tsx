@@ -7,6 +7,7 @@ import { FileIcon } from "./file-icon";
 import { EXPLORER_DRAG_MIME } from "./explorer-list-view";
 import type { FileNode } from "./types";
 import { useExplorerLabels } from "./labels";
+import { RenameInput } from "./rename-input";
 import { useCoarsePointer, useExplorerItemPointer } from "./use-explorer-item-pointer";
 
 export interface ExplorerGridViewProps {
@@ -23,6 +24,9 @@ export interface ExplorerGridViewProps {
   readonly draggingIds?: ReadonlySet<string>;
   readonly dropTargetId: string | null;
   readonly onDragOverRow: (id: string | null) => void;
+  readonly renamingId?: string | null;
+  readonly onRenameCommit?: (name: string) => void;
+  readonly onRenameCancel?: () => void;
   readonly className?: string;
 }
 
@@ -41,6 +45,9 @@ export function ExplorerGridView(props: ExplorerGridViewProps): React.ReactEleme
     draggingIds,
     dropTargetId,
     onDragOverRow,
+    renamingId,
+    onRenameCommit,
+    onRenameCancel,
     className,
   } = props;
   const labels = useExplorerLabels();
@@ -70,6 +77,9 @@ export function ExplorerGridView(props: ExplorerGridViewProps): React.ReactEleme
           onDragEnd={onDragEnd}
           onDrop={onDrop}
           onDragOverRow={onDragOverRow}
+          renaming={file.id === renamingId}
+          onRenameCommit={onRenameCommit}
+          onRenameCancel={onRenameCancel}
         />
       ))}
     </ul>
@@ -96,6 +106,9 @@ function ExplorerGridItem({
   onDragEnd,
   onDrop,
   onDragOverRow,
+  renaming,
+  onRenameCommit,
+  onRenameCancel,
 }: {
   file: FileNode;
   idx: number;
@@ -116,8 +129,52 @@ function ExplorerGridItem({
   onDragEnd: () => void;
   onDrop: (destinationFolderId: string) => void;
   onDragOverRow: (id: string | null) => void;
+  renaming: boolean;
+  onRenameCommit?: (name: string) => void;
+  onRenameCancel?: () => void;
 }): React.ReactElement {
+  const labels = useExplorerLabels();
   const pointer = useExplorerItemPointer({ file, coarse, onSelect, onActivate });
+  const bodyClass = cn(
+    "group relative flex w-full flex-col items-stretch gap-1 overflow-hidden rounded-[10px] border border-border bg-background p-2 text-left outline-none",
+    "touch-manipulation select-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+    selected && "border-primary bg-muted",
+    dragging && "opacity-50",
+    dropTarget && "ring-2 ring-primary ring-inset",
+  );
+  const inner = (
+    <>
+      <span className="flex items-center gap-1 pr-8">
+        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground tabular-nums">
+          {String(idx + 1).padStart(2, "0")}
+        </span>
+        {isProtected ? (
+          <span className="flex items-center gap-0.5 rounded-[10px] bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+            <Link2 aria-hidden="true" className="size-2.5" />
+            <span className="sr-only">{inUseLabel}</span>
+          </span>
+        ) : null}
+      </span>
+      <span className={cn("flex items-center justify-center py-1", file.kind === "folder" ? "text-primary" : "text-muted-foreground")}>
+        <FileIcon kind={file.kind} mimeType={file.mimeType} className="size-12 text-current" />
+      </span>
+      {renaming && onRenameCommit && onRenameCancel ? (
+        <RenameInput
+          name={file.name}
+          kind={file.kind}
+          ariaLabel={labels.rename}
+          className="text-[11px]"
+          onCommit={onRenameCommit}
+          onCancel={onRenameCancel}
+        />
+      ) : (
+        <span className={cn("truncate text-[11px]", file.kind === "folder" && "text-primary")}>{file.name}</span>
+      )}
+      <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
+        {file.kind === "folder" ? folderLabel : formatSizeShort(file.size)}
+      </span>
+    </>
+  );
   return (
     <li className="relative">
       {coarse && onContextMenu ? (
@@ -134,77 +191,60 @@ function ExplorerGridItem({
           <MoreHorizontal aria-hidden="true" className="size-5" />
         </button>
       ) : null}
-      <button
-        type="button"
-        data-file-id={file.id}
-        draggable={!coarse}
-        aria-selected={selected}
-        onDragStart={(e: DragEvent<HTMLButtonElement>) => {
-          e.dataTransfer.setData(EXPLORER_DRAG_MIME, file.id);
-          e.dataTransfer.effectAllowed = "move";
-          onDragStart(file.id);
-        }}
-        onDragEnd={onDragEnd}
-        onPointerDown={pointer.onPointerDown}
-        onClick={pointer.onClick}
-        onDoubleClick={pointer.onDoubleClick}
-        onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            onActivate(file);
+      {renaming ? (
+        <div data-file-id={file.id} className={bodyClass}>
+          {inner}
+        </div>
+      ) : (
+        <button
+          type="button"
+          data-file-id={file.id}
+          draggable={!coarse}
+          aria-selected={selected}
+          onDragStart={(e: DragEvent<HTMLButtonElement>) => {
+            e.dataTransfer.setData(EXPLORER_DRAG_MIME, file.id);
+            e.dataTransfer.effectAllowed = "move";
+            onDragStart(file.id);
+          }}
+          onDragEnd={onDragEnd}
+          onPointerDown={pointer.onPointerDown}
+          onClick={pointer.onClick}
+          onDoubleClick={pointer.onDoubleClick}
+          onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onActivate(file);
+            }
+          }}
+          onContextMenu={
+            onContextMenu
+              ? (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (coarse) return;
+                  onContextMenu(file, e);
+                }
+              : undefined
           }
-        }}
-        onContextMenu={
-          onContextMenu
-            ? (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (coarse) return;
-                onContextMenu(file, e);
-              }
-            : undefined
-        }
-        onDragOver={(e) => {
-          if (file.kind !== "folder" || !draggingId) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
-          if (dropTargetId !== file.id) onDragOverRow(file.id);
-        }}
-        onDragLeave={() => {
-          if (dropTargetId === file.id) onDragOverRow(null);
-        }}
-        onDrop={(e) => {
-          if (file.kind !== "folder") return;
-          e.preventDefault();
-          onDrop(file.id);
-        }}
-        className={cn(
-          "group relative flex w-full flex-col items-stretch gap-1 overflow-hidden rounded-[10px] border border-border bg-background p-2 text-left outline-none",
-          "touch-manipulation select-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
-          selected && "border-primary bg-muted",
-          dragging && "opacity-50",
-          dropTarget && "ring-2 ring-primary ring-inset",
-        )}
-      >
-        <span className="flex items-center gap-1 pr-8">
-          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground tabular-nums">
-            {String(idx + 1).padStart(2, "0")}
-          </span>
-          {isProtected ? (
-            <span className="flex items-center gap-0.5 rounded-[10px] bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
-              <Link2 aria-hidden="true" className="size-2.5" />
-              <span className="sr-only">{inUseLabel}</span>
-            </span>
-          ) : null}
-        </span>
-        <span className={cn("flex items-center justify-center py-1", file.kind === "folder" ? "text-primary" : "text-muted-foreground")}>
-          <FileIcon kind={file.kind} mimeType={file.mimeType} className="size-12 text-current" />
-        </span>
-        <span className={cn("truncate text-[11px]", file.kind === "folder" && "text-primary")}>{file.name}</span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
-          {file.kind === "folder" ? folderLabel : formatSizeShort(file.size)}
-        </span>
-      </button>
+          onDragOver={(e) => {
+            if (file.kind !== "folder" || !draggingId) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            if (dropTargetId !== file.id) onDragOverRow(file.id);
+          }}
+          onDragLeave={() => {
+            if (dropTargetId === file.id) onDragOverRow(null);
+          }}
+          onDrop={(e) => {
+            if (file.kind !== "folder") return;
+            e.preventDefault();
+            onDrop(file.id);
+          }}
+          className={bodyClass}
+        >
+          {inner}
+        </button>
+      )}
     </li>
   );
 }

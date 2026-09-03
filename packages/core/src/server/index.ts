@@ -49,6 +49,7 @@ export type { AuthContext } from "../auth/with-auth";
 export {
   createUploadRouteHandler,
   createDownloadRouteHandler,
+  createShareRouteHandler,
 } from "./route-handlers";
 export type {
   CreateUploadRouteHandlerOptions,
@@ -56,6 +57,7 @@ export type {
   UploadRouteHandlerResult,
   CreateDownloadRouteHandlerOptions,
   DownloadRouteHandlerResult,
+  CreateShareRouteHandlerOptions,
 } from "./route-handlers";
 // withAuth + RequestContext are re-exported from the main
 // "@vryzel/file-next" entry (no need to be in the server-only module).

@@ -16,6 +16,7 @@ import { cn } from "./cn";
 import { swallowClickThrough } from "./swallow-click-through";
 import type { FileNode } from "./types";
 import { useExplorerLabels } from "./labels";
+import { absoluteShareUrl } from "./share-url";
 
 export interface ExplorerContextMenuActions {
   readonly deleteFile: (input: { id: string }) => Promise<unknown>;
@@ -204,15 +205,15 @@ export function ExplorerContextMenu(
               {labels.paste}
             </button>
           ) : null}
-          {actions.createShare ? (
+          {target.file.kind === "file" && actions.createShare ? (
             <button
               type="button"
               role="menuitem"
               className={itemClass}
               onClick={() => {
                 close();
-                void actions.createShare!({ id: target.file.id }).then((token) =>
-                  navigator.clipboard.writeText(token),
+                void actions.createShare!({ id: target.file.id }).then((link) =>
+                  navigator.clipboard.writeText(absoluteShareUrl(link)),
                 );
               }}
             >
