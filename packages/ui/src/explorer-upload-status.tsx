@@ -1,9 +1,24 @@
 "use client";
 
+import { useLayoutEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { cn } from "./cn";
 import { useExplorerLabels } from "./labels";
 import type { UploadQueueItem } from "./use-upload-queue";
+
+/** Byte-weighted progress. A finished file counts in full; a failed one stays where it stopped. */
+export function uploadQueuePercent(items: ReadonlyArray<UploadQueueItem>): number {
+  const total = items.reduce((sum, item) => sum + item.size, 0);
+  if (total <= 0) return items.length === 0 ? 0 : 100;
+  const loaded = items.reduce((sum, item) => {
+    if (item.status === "success") return sum + item.size;
+    if (item.status === "uploading" || item.status === "error") {
+      return sum + (item.size * item.progress) / 100;
+    }
+    return sum;
+  }, 0);
+  return Math.min(100, Math.round((loaded / total) * 100));
+}
 
 export function ExplorerUploadStatus({
   items,
@@ -15,6 +30,22 @@ export function ExplorerUploadStatus({
   readonly className?: string;
 }): React.ReactElement | null {
   const labels = useExplorerLabels();
+  const listRef = useRef<HTMLUListElement>(null);
+  const activeId = items.find((item) => item.status === "uploading")?.id;
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || !activeId) return;
+    const row = list.querySelector<HTMLElement>(`[data-upload-id="${activeId}"]`);
+    if (!row) return;
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (top < list.scrollTop) list.scrollTop = top;
+    else if (bottom > list.scrollTop + list.clientHeight) {
+      list.scrollTop = bottom - list.clientHeight;
+    }
+  }, [activeId]);
+
   if (items.length === 0) return null;
 
   const done = items.filter((item) => item.status === "success").length;
@@ -22,7 +53,7 @@ export function ExplorerUploadStatus({
   const active = items.some(
     (item) => item.status === "queued" || item.status === "uploading",
   );
-  const visible = items.slice(-6);
+  const totalPercent = uploadQueuePercent(items);
 
   return (
     <div
@@ -42,22 +73,26 @@ export function ExplorerUploadStatus({
             <span className="text-destructive"> · {failed}</span>
           ) : null}
         </span>
+        <span className="ml-auto font-mono text-[10px] tabular-nums text-primary">
+          {totalPercent}%
+        </span>
         {!active ? (
           <button
             type="button"
             aria-label={labels.dismissUploads}
-            className="ml-auto inline-flex size-7 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-muted"
+            className="inline-flex size-7 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-muted"
             onClick={onDismiss}
           >
             <X aria-hidden="true" className="size-4" />
           </button>
-        ) : (
-          <span className="ml-auto" />
-        )}
+        ) : null}
       </div>
-      <ul className="flex max-h-48 flex-col gap-1.5 overflow-y-auto">
-        {visible.map((item) => (
-          <li key={item.id} className="min-w-0">
+      <div className="mb-2 h-1 overflow-hidden rounded-[10px] bg-muted">
+        <div className="h-full bg-primary" style={{ width: `${totalPercent}%` }} />
+      </div>
+      <ul ref={listRef} className="flex max-h-48 min-h-0 flex-col gap-1.5 overflow-y-auto overscroll-contain">
+        {items.map((item) => (
+          <li key={item.id} data-upload-id={item.id} className="min-w-0 shrink-0">
             <div className="flex items-center gap-2">
               <span className="min-w-0 flex-1 truncate text-xs">{item.name}</span>
               <span
