@@ -33,24 +33,25 @@
     "test:run": "vitest run"
   },
   "peerDependencies": {
-    "react": ">=18.0.0",
-    "react-dom": ">=18.0.0",
     "@vryzel/file-next": "^0.4.0",
-    "@vryzel/file-next-headless": "^0.4.0"
+    "@vryzel/file-next-headless": "^0.4.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.13",
     "clsx": "^2.1.1",
     "lucide-react": "^0.460.0",
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
-    "@vryzel/file-next": "workspace:*",
-    "@vryzel/file-next-headless": "workspace:*",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
+    "@vryzel/file-next": "workspace:*",
+    "@vryzel/file-next-headless": "workspace:*",
     "jsdom": "^25.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

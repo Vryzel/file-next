@@ -1,6 +1,15 @@
 "use client";
 
-import type { DragEvent, KeyboardEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+  type RefObject,
+} from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link2, MoreHorizontal } from "lucide-react";
 import { cn } from "./cn";
 import { FileIcon } from "./file-icon";
@@ -9,6 +18,7 @@ import type { FileNode } from "./types";
 import { useExplorerLabels } from "./labels";
 import { RenameInput } from "./rename-input";
 import { useCoarsePointer, useExplorerItemPointer } from "./use-explorer-item-pointer";
+import { gridColumnCount, selectionEdgeIndex, useLoadMoreOnEnd } from "./virtual-window";
 
 export interface ExplorerGridViewProps {
   readonly files: ReadonlyArray<FileNode>;
@@ -28,7 +38,13 @@ export interface ExplorerGridViewProps {
   readonly onRenameCommit?: (name: string) => void;
   readonly onRenameCancel?: () => void;
   readonly className?: string;
+  readonly scrollRef?: RefObject<HTMLDivElement>;
+  readonly hasMore?: boolean;
+  readonly loadingMore?: boolean;
+  readonly onLoadMore?: () => void;
 }
+
+const GRID_PAD = 12; // ponytail: pt-3 at 16px root. Measure the spacer if the root font size changes.
 
 export function ExplorerGridView(props: ExplorerGridViewProps): React.ReactElement {
   const {
@@ -49,40 +65,125 @@ export function ExplorerGridView(props: ExplorerGridViewProps): React.ReactEleme
     onRenameCommit,
     onRenameCancel,
     className,
+    scrollRef: scrollRefProp,
+    hasMore = false,
+    loadingMore = false,
+    onLoadMore,
   } = props;
   const labels = useExplorerLabels();
   const coarse = useCoarsePointer();
+  const ownScrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = scrollRefProp ?? ownScrollRef;
+  const [width, setWidth] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setWidth(el.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [scrollRef]);
+
+  const columns = width != null && width > 0 ? gridColumnCount(width) : 6;
+  const rowCount = Math.ceil(files.length / columns);
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 156,
+    overscan: 4,
+    gap: 6, // ponytail: gap-1.5 at 16px root
+    scrollMargin: GRID_PAD,
+    getItemKey: (index) => files[index * columns]?.id ?? index,
+    initialRect: { width: 800, height: 600 },
+  });
+
+  const virtualRows = virtualizer.getVirtualItems();
+  const lastRow = virtualRows.at(-1);
+  useLoadMoreOnEnd({
+    lastIndex: lastRow
+      ? Math.min(files.length - 1, (lastRow.index + 1) * columns - 1)
+      : undefined,
+    loaded: files.length,
+    hasMore,
+    loading: loadingMore,
+    onLoadMore,
+  });
+
+  const prevSelected = useRef(selectedIds);
+  useEffect(() => {
+    const itemIndex = renamingId
+      ? files.findIndex((file) => file.id === renamingId)
+      : selectionEdgeIndex(files, selectedIds, prevSelected.current);
+    prevSelected.current = selectedIds;
+    if (itemIndex < 0) return;
+    virtualizer.scrollToIndex(Math.floor(itemIndex / columns), { align: "auto" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renamingId, selectedIds]);
 
   return (
-    <ul role="list" className={cn("grid grid-cols-3 gap-1.5 p-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8", className)}>
-      {files.map((file, idx) => (
-        <ExplorerGridItem
-          key={file.id}
-          file={file}
-          idx={idx}
-          selected={selectedIds.has(file.id)}
-          dragging={draggingIds?.has(file.id) ?? file.id === draggingId}
-          dropTarget={file.id === dropTargetId && file.kind === "folder"}
-          isProtected={protectedIds?.has(file.id) ?? false}
-          draggingId={draggingId}
-          dropTargetId={dropTargetId}
-          coarse={coarse}
-          folderLabel={labels.folder}
-          inUseLabel={labels.inUse}
-          actionsLabel={labels.itemActions}
-          onSelect={onSelect}
-          onActivate={onActivate}
-          onContextMenu={onContextMenu}
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-          onDrop={onDrop}
-          onDragOverRow={onDragOverRow}
-          renaming={file.id === renamingId}
-          onRenameCommit={onRenameCommit}
-          onRenameCancel={onRenameCancel}
-        />
-      ))}
-    </ul>
+    <div
+      ref={scrollRefProp ? undefined : ownScrollRef}
+      className={cn(!scrollRefProp && "min-h-0 flex-1 overflow-y-auto", className)}
+    >
+      <div role="list" className="pt-3">
+        <div role="presentation" className="relative z-0 w-full" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualRows.map((virtualRow) => {
+            const start = virtualRow.index * columns;
+            const rowFiles = files.slice(start, start + columns);
+            return (
+              <div
+                key={virtualRow.key}
+                role="presentation"
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                className="absolute left-0 top-0 grid w-full gap-1.5 px-3"
+                style={{
+                  gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                  transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
+                }}
+              >
+                {rowFiles.map((file, offset) => (
+                  <ExplorerGridItem
+                    key={file.id}
+                    file={file}
+                    idx={start + offset}
+                    selected={selectedIds.has(file.id)}
+                    dragging={draggingIds?.has(file.id) ?? file.id === draggingId}
+                    dropTarget={file.id === dropTargetId && file.kind === "folder"}
+                    isProtected={protectedIds?.has(file.id) ?? false}
+                    draggingId={draggingId}
+                    dropTargetId={dropTargetId}
+                    coarse={coarse}
+                    folderLabel={labels.folder}
+                    inUseLabel={labels.inUse}
+                    actionsLabel={labels.itemActions}
+                    onSelect={onSelect}
+                    onActivate={onActivate}
+                    onContextMenu={onContextMenu}
+                    onDragStart={onDragStart}
+                    onDragEnd={onDragEnd}
+                    onDrop={onDrop}
+                    onDragOverRow={onDragOverRow}
+                    renaming={file.id === renamingId}
+                    onRenameCommit={onRenameCommit}
+                    onRenameCancel={onRenameCancel}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+        <div className="h-3" />
+      </div>
+      {loadingMore ? (
+        <p className="px-4 py-3 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+          {labels.loading}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -176,7 +277,7 @@ function ExplorerGridItem({
     </>
   );
   return (
-    <li className="relative">
+    <div role="listitem" className="relative">
       {coarse && onContextMenu ? (
         <button
           type="button"
@@ -245,7 +346,7 @@ function ExplorerGridItem({
           {inner}
         </button>
       )}
-    </li>
+    </div>
   );
 }
 

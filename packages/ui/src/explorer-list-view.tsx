@@ -1,6 +1,15 @@
 "use client";
 
-import type { DragEvent, KeyboardEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+  type RefObject,
+} from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronUp, Link2, MoreHorizontal } from "lucide-react";
 import { cn } from "./cn";
 import { FileIcon } from "./file-icon";
@@ -8,6 +17,7 @@ import type { FileNode } from "./types";
 import { useExplorerLabels } from "./labels";
 import { RenameInput } from "./rename-input";
 import { useCoarsePointer, useExplorerItemPointer } from "./use-explorer-item-pointer";
+import { selectionEdgeIndex, useLoadMoreOnEnd } from "./virtual-window";
 
 export type ExplorerColumn = "name" | "size" | "modified" | "kind";
 export type SortDirection = "asc" | "desc";
@@ -33,6 +43,10 @@ export interface ExplorerListViewProps {
   readonly onRenameCommit?: (name: string) => void;
   readonly onRenameCancel?: () => void;
   readonly className?: string;
+  readonly scrollRef?: RefObject<HTMLDivElement>;
+  readonly hasMore?: boolean;
+  readonly loadingMore?: boolean;
+  readonly onLoadMore?: () => void;
 }
 
 const ROW_GRID =
@@ -61,17 +75,74 @@ export function ExplorerListView(props: ExplorerListViewProps): React.ReactEleme
     onRenameCommit,
     onRenameCancel,
     className,
+    scrollRef: scrollRefProp,
+    hasMore = false,
+    loadingMore = false,
+    onLoadMore,
   } = props;
   const labels = useExplorerLabels();
   const coarse = useCoarsePointer();
+  const ownScrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = scrollRefProp ?? ownScrollRef;
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const measure = () => setScrollMargin(header.offsetHeight);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
+  const virtualizer = useVirtualizer({
+    count: files.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => (coarse ? 64 : 44),
+    overscan: 8,
+    scrollMargin,
+    getItemKey: (index) => files[index]?.id ?? index,
+    initialRect: { width: 800, height: 600 },
+  });
+
+  const virtualItems = virtualizer.getVirtualItems();
+  useLoadMoreOnEnd({
+    lastIndex: virtualItems.at(-1)?.index,
+    loaded: files.length,
+    hasMore,
+    loading: loadingMore,
+    onLoadMore,
+  });
+
+  const prevSelected = useRef(selectedIds);
+  useEffect(() => {
+    const index = renamingId
+      ? files.findIndex((file) => file.id === renamingId)
+      : selectionEdgeIndex(files, selectedIds, prevSelected.current);
+    prevSelected.current = selectedIds;
+    if (index < 0) return;
+    virtualizer.scrollToIndex(index, { align: "auto" });
+    // Scroll only when the selection or rename target changes, not when a page appends.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renamingId, selectedIds]);
 
   return (
-    <div className={cn("overflow-x-auto overscroll-x-contain", className)}>
+    <div
+      ref={scrollRefProp ? undefined : ownScrollRef}
+      className={cn(
+        !scrollRefProp && "min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-x-contain",
+        className,
+      )}
+    >
       <div className="min-w-[32rem] sm:min-w-0">
         <div
+          ref={headerRef}
           role="row"
           className={cn(
-            "grid items-center gap-3 border-b border-border px-3 py-2 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground",
+            "sticky top-0 z-10 grid items-center gap-3 border-b border-border bg-background px-3 py-2 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground",
             ROW_GRID,
           )}
         >
@@ -85,32 +156,44 @@ export function ExplorerListView(props: ExplorerListViewProps): React.ReactEleme
             <SortHeader col="modified" label={labels.sortModified} sortKey={sortKey} sortDirection={sortDirection} onSort={onSortChange} className="hidden sm:flex" />
           )}
         </div>
-        <ul role="list">
-          {files.map((file, idx) => (
-            <ExplorerListRow
-              key={file.id}
-              file={file}
-              idx={idx}
-              selected={selectedIds.has(file.id)}
-              dragging={draggingIds?.has(file.id) ?? file.id === draggingId}
-              dropTarget={file.id === dropTargetId && file.kind === "folder"}
-              isProtected={protectedIds?.has(file.id) ?? false}
-              draggingId={draggingId}
-              dropTargetId={dropTargetId}
-              coarse={coarse}
-              onSelect={onSelect}
-              onActivate={onActivate}
-              onContextMenu={onContextMenu}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onDrop={onDrop}
-              onDragOverRow={onDragOverRow}
-              renaming={file.id === renamingId}
-              onRenameCommit={onRenameCommit}
-              onRenameCancel={onRenameCancel}
-            />
-          ))}
+        <ul role="list" className="relative z-0 w-full" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualItems.map((virtualRow) => {
+            const file = files[virtualRow.index];
+            if (!file) return null;
+            return (
+              <ExplorerListRow
+                key={virtualRow.key}
+                file={file}
+                idx={virtualRow.index}
+                dataIndex={virtualRow.index}
+                measureRef={virtualizer.measureElement}
+                translateY={virtualRow.start - virtualizer.options.scrollMargin}
+                selected={selectedIds.has(file.id)}
+                dragging={draggingIds?.has(file.id) ?? file.id === draggingId}
+                dropTarget={file.id === dropTargetId && file.kind === "folder"}
+                isProtected={protectedIds?.has(file.id) ?? false}
+                draggingId={draggingId}
+                dropTargetId={dropTargetId}
+                coarse={coarse}
+                onSelect={onSelect}
+                onActivate={onActivate}
+                onContextMenu={onContextMenu}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onDrop={onDrop}
+                onDragOverRow={onDragOverRow}
+                renaming={file.id === renamingId}
+                onRenameCommit={onRenameCommit}
+                onRenameCancel={onRenameCancel}
+              />
+            );
+          })}
         </ul>
+        {loadingMore ? (
+          <p className="px-4 py-3 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+            {labels.loading}
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -119,6 +202,9 @@ export function ExplorerListView(props: ExplorerListViewProps): React.ReactEleme
 function ExplorerListRow({
   file,
   idx,
+  dataIndex,
+  measureRef,
+  translateY,
   selected,
   dragging,
   dropTarget,
@@ -139,6 +225,9 @@ function ExplorerListRow({
 }: {
   file: FileNode;
   idx: number;
+  dataIndex: number;
+  measureRef: (node: Element | null) => void;
+  translateY: number;
   selected: boolean;
   dragging: boolean;
   dropTarget: boolean;
@@ -165,6 +254,8 @@ function ExplorerListRow({
     <li
       role="row"
       data-file-id={file.id}
+      data-index={dataIndex}
+      ref={measureRef}
       aria-selected={selected}
       draggable={!coarse && !renaming}
       onDragStart={(e: DragEvent<HTMLLIElement>) => {
@@ -210,8 +301,9 @@ function ExplorerListRow({
         else onDragEnd();
       }}
       tabIndex={0}
+      style={{ transform: `translateY(${translateY}px)` }}
       className={cn(
-        "group grid items-center gap-3 border-b border-border/60 px-3 py-3.5 text-sm outline-none last:border-b-0 sm:py-2",
+        "absolute left-0 top-0 grid w-full items-center gap-3 border-b border-border/60 px-3 py-3.5 text-sm outline-none sm:py-2",
         "touch-manipulation select-none [-webkit-touch-callout:none]",
         ROW_GRID,
         "hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",

@@ -270,6 +270,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
   });
 
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [trashOpen, setTrashOpen] = useState(false);
   const [pageItems, setPageItems] = useState<ReadonlyArray<FileNode>>([]);
@@ -434,6 +435,11 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
     },
     [listTrash, query, searchFiles, trashOpen],
   );
+
+  const loadNext = useCallback(() => {
+    if (overlayFiles) void loadOverlay("more");
+    else void loadBrowse("more");
+  }, [loadBrowse, loadOverlay, overlayFiles]);
 
   const refreshTrashFlag = useCallback(async () => {
     if (!listTrash) {
@@ -769,7 +775,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-x-contain">
         {(overlayLoading || pageStatus === "loading") && displayFiles.length === 0 ? (
           <p className="px-4 py-12 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
             {labels.loading}
@@ -816,6 +822,10 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
               renamingId={renamingId}
               onRenameCommit={commitRename}
               onRenameCancel={cancelRename}
+              scrollRef={scrollRef}
+              hasMore={hasMore}
+              loadingMore={loadingMore || overlayMore}
+              onLoadMore={loadNext}
             />
           </div>
         ) : (
@@ -842,26 +852,14 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
               renamingId={renamingId}
               onRenameCommit={commitRename}
               onRenameCancel={cancelRename}
+              scrollRef={scrollRef}
+              hasMore={hasMore}
+              loadingMore={loadingMore || overlayMore}
+              onLoadMore={loadNext}
             />
           </div>
         )}
       </div>
-
-      {hasMore && sortedFiles.length > 0 ? (
-        <div className="shrink-0 border-t border-border p-3">
-          <button
-            type="button"
-            disabled={loadingMore || overlayMore}
-            onClick={() => {
-              if (overlayFiles) void loadOverlay("more");
-              else void loadBrowse("more");
-            }}
-            className="inline-flex h-8 w-full items-center justify-center rounded-[10px] border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
-          >
-            {loadingMore || overlayMore ? labels.loading : labels.loadMore}
-          </button>
-        </div>
-      ) : null}
 
       <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-2">
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
