@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0 — 2026-10-04
+
+- Explorer list and grid virtualize the visible window. The next page loads as you scroll; the full-width Load more button is gone.
+- `@vryzel/file-next-ui` depends on `@tanstack/react-virtual`. Core, headless, and CLI move to 1.0.0 with no API change.
+
 ## 0.4.5 — 2026-09-03
 
 - UI/headless npm listings say they require `@vryzel/file-next`. Install commands include the peers.

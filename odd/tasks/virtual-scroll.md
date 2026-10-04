@@ -43,7 +43,7 @@ Delegated writer. Trigger: list view, grid view, explorer, helper, and tests.
 - [x] Keyboard selection and rename scroll the item into the window
 - [x] Explorer tests: next page loads itself; a long list does not mount every row
 - [x] `pnpm --filter @vryzel/file-next-ui test:run` and `typecheck` green
-- [ ] Changelog and 1.0.0 after that green run (parent)
+- [x] Changelog and 1.0.0 after that green run (parent)
 
 ## Verification
 - `pnpm --filter @vryzel/file-next-ui test:run`: 2 files, 7 tests passed
