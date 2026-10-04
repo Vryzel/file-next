@@ -104,6 +104,7 @@ export function ExplorerListView(props: ExplorerListViewProps): React.ReactEleme
     estimateSize: () => (coarse ? 64 : 44),
     overscan: 8,
     scrollMargin,
+    scrollPaddingStart: scrollMargin,
     getItemKey: (index) => files[index]?.id ?? index,
     initialRect: { width: 800, height: 600 },
   });

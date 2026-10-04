@@ -101,10 +101,11 @@ export function ExplorerGridView(props: ExplorerGridViewProps): React.ReactEleme
   });
 
   const virtualRows = virtualizer.getVirtualItems();
-  const lastRow = virtualRows.at(-1);
+  const viewportEnd = (virtualizer.scrollOffset ?? 0) + (virtualizer.scrollRect?.height ?? 0);
+  const lastVisibleRow = virtualRows.filter((row) => row.start < viewportEnd).at(-1);
   useLoadMoreOnEnd({
-    lastIndex: lastRow
-      ? Math.min(files.length - 1, (lastRow.index + 1) * columns - 1)
+    lastIndex: lastVisibleRow
+      ? Math.min(files.length - 1, (lastVisibleRow.index + 1) * columns - 1)
       : undefined,
     loaded: files.length,
     hasMore,
