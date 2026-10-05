@@ -82,6 +82,27 @@ describe("T-018b: createPresignedDownloadUrl", () => {
     expect(result.value.url).toMatch(/test-bucket/);
     expect(result.value.url).toMatch(/uploads\/report\.pdf/);
     expect(result.value.url).toMatch(/X-Amz-Signature=/);
+    expect(decodeURIComponent(result.value.url)).toContain("response-content-disposition=attachment");
+  });
+
+  it("keeps inline for a png preview and attachment for html", async () => {
+    s3Mock.on(GetObjectCommand).resolves({});
+    const png = await createPresignedDownloadUrl(client, config, {
+      key: asS3Key("uploads/cat.png"),
+      disposition: "inline",
+      contentType: "image/png",
+    });
+    const html = await createPresignedDownloadUrl(client, config, {
+      key: asS3Key("uploads/page.html"),
+      disposition: "inline",
+      contentType: "text/html",
+    });
+    expect(png.ok && decodeURIComponent(png.value.url)).toContain(
+      "response-content-disposition=inline",
+    );
+    expect(html.ok && decodeURIComponent(html.value.url)).toContain(
+      "response-content-disposition=attachment",
+    );
   });
 
   it("works at exactly 7 days (S3 SigV4 max the SDK accepts)", async () => {

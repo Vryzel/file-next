@@ -131,6 +131,12 @@ export interface PresignedUploadInput {
 export interface PresignedDownloadInput {
   key: S3Key;
   expiresIn?: number;
+  /**
+   * Default `attachment`. `inline` is honored only for non-executing preview types.
+   * Pass `contentType` or the signer keeps `attachment`.
+   */
+  disposition?: "attachment" | "inline";
+  contentType?: string;
 }
 
 export interface GetPublicUrlInput {
