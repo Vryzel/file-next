@@ -35,13 +35,13 @@ export function useUploadQueue(options: {
     type: string;
     content: Blob;
     parentId: string | null;
-  }) => Promise<RequestUploadResult>;
+  }, signal?: AbortSignal) => Promise<RequestUploadResult>;
   readonly confirmUpload?: (file: {
     name: string;
     size: number;
     type: string;
     content: Blob;
-  }) => Promise<void> | void;
+  }, signal?: AbortSignal) => Promise<void> | void;
 }): {
   readonly items: ReadonlyArray<UploadQueueItem>;
   readonly enqueue: (files: ReadonlyArray<File>, parentId: string | null) => void;
@@ -58,6 +58,8 @@ export function useUploadQueue(options: {
   const queueRef = useRef<InternalItem[]>([]);
   const running = useRef(false);
   const dropped = useRef(new Set<string>());
+  const activeId = useRef<string | null>(null);
+  const stepAbort = useRef<AbortController | null>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
   const xhrOwner = useRef<string | null>(null);
   const [items, setItems] = useState<ReadonlyArray<UploadQueueItem>>([]);
@@ -71,6 +73,13 @@ export function useUploadQueue(options: {
     const next = queueRef.current.find((item) => item.status === "queued");
     if (!next) return;
     running.current = true;
+    activeId.current = next.id;
+    const controller = new AbortController();
+    stepAbort.current = controller;
+    let confirming = false;
+    const forget = () => {
+      queueRef.current = queueRef.current.filter((item) => item.id !== next.id);
+    };
     next.status = "uploading";
     next.progress = 0;
     publish();
@@ -81,8 +90,11 @@ export function useUploadQueue(options: {
         type: next.type,
         content: next.content,
         parentId: next.parentId,
-      });
-      if (dropped.current.has(next.id)) return;
+      }, controller.signal);
+      if (dropped.current.has(next.id)) {
+        forget();
+        return;
+      }
       let lastPublish = 0;
       await putFile(
         target,
@@ -100,24 +112,36 @@ export function useUploadQueue(options: {
           xhrOwner.current = next.id;
         },
       );
-      if (dropped.current.has(next.id)) return;
+      if (dropped.current.has(next.id)) {
+        forget();
+        return;
+      }
+      confirming = true;
       await confirmUploadRef.current?.({
         name: next.name,
         size: next.size,
         type: next.type,
         content: next.content,
-      });
-      if (dropped.current.has(next.id)) return;
+      }, controller.signal);
+      dropped.current.delete(next.id);
       next.status = "success";
       next.progress = 100;
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("file-next-uploaded"));
       }
     } catch (error) {
-      if (dropped.current.has(next.id)) return;
+      const aborted = error instanceof Error && error.name === "AbortError";
+      if ((!confirming && dropped.current.has(next.id)) || (confirming && aborted)) {
+        forget();
+        return;
+      }
       next.status = "error";
       next.error = error instanceof Error ? error.message : "Upload failed";
     } finally {
+      if (activeId.current === next.id) {
+        activeId.current = null;
+        stepAbort.current = null;
+      }
       if (xhrOwner.current === next.id) {
         xhrRef.current = null;
         xhrOwner.current = null;
@@ -156,8 +180,12 @@ export function useUploadQueue(options: {
       if (ids.length === 0) return;
       for (const id of ids) dropped.current.add(id);
       if (xhrOwner.current && ids.includes(xhrOwner.current)) xhrRef.current?.abort();
+      if (activeId.current && ids.includes(activeId.current)) stepAbort.current?.abort();
       const idSet = new Set(ids);
-      queueRef.current = queueRef.current.filter((item) => !idSet.has(item.id));
+      // ponytail: row stays until the promise settles; a confirm that ignores AbortSignal still blocks the pump
+      queueRef.current = queueRef.current.filter(
+        (item) => !idSet.has(item.id) || item.id === activeId.current,
+      );
       publish();
     },
     [publish],
