@@ -1,16 +1,13 @@
 # Changelog
 
-## 1.1.0 — 2026-10-05
+## 0.5.0 — 2026-10-05
 
+- Explorer list and grid virtualize the visible window. The next page loads as you scroll; the full-width Load more button is gone.
 - Upload queue scrolls the full list, follows the file currently uploading, and shows byte-weighted total progress. Cancel stops the active upload and drops the rest of the queue. Each row can be removed.
 - A same-folder upload whose name is already taken is stored as `name (1).ext` instead of failing. Folder create, move, and rename still conflict.
 - File preview opens as a lightbox. Images zoom with the controls, the wheel, or a double-click. PDF, text, video, and audio use the same full-screen frame, without a dialog card.
 - Signed downloads are `attachment`. `inline` is kept only for preview types that do not execute as a page. HTML and SVG stay attachments.
-
-## 1.0.0 — 2026-10-04
-
-- Explorer list and grid virtualize the visible window. The next page loads as you scroll; the full-width Load more button is gone.
-- `@vryzel/file-next-ui` depends on `@tanstack/react-virtual`. Core, headless, and CLI move to 1.0.0 with no API change.
+- `@vryzel/file-next-ui` depends on `@tanstack/react-virtual`.
 
 ## 0.4.5 — 2026-09-03
 
