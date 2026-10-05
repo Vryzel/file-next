@@ -59,6 +59,10 @@ export type ExplorerLabels = {
   uploadFailed: string;
   unknownType: string;
   previewUnavailable: string;
+  closePreview: string;
+  zoomIn: string;
+  zoomOut: string;
+  zoomFit: string;
 };
 
 export const defaultLabels: ExplorerLabels = {
@@ -120,6 +124,10 @@ export const defaultLabels: ExplorerLabels = {
   uploadFailed: "Failed",
   unknownType: "Unknown type",
   previewUnavailable: "Preview is not available for this file.",
+  closePreview: "Close preview",
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
+  zoomFit: "Fit",
 };
 
 const LabelsContext = createContext<ExplorerLabels>(defaultLabels);
