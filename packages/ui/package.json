@@ -1,6 +1,6 @@
 {
   "name": "@vryzel/file-next-ui",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "File explorer UI for file-next. Requires @vryzel/file-next and @vryzel/file-next-headless.",
   "type": "module",
   "license": "MIT",
