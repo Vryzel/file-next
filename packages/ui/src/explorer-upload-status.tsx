@@ -23,10 +23,14 @@ export function uploadQueuePercent(items: ReadonlyArray<UploadQueueItem>): numbe
 export function ExplorerUploadStatus({
   items,
   onDismiss,
+  onCancel,
+  onRemove,
   className,
 }: {
   readonly items: ReadonlyArray<UploadQueueItem>;
   readonly onDismiss: () => void;
+  readonly onCancel?: () => void;
+  readonly onRemove?: (id: string) => void;
   readonly className?: string;
 }): React.ReactElement | null {
   const labels = useExplorerLabels();
@@ -76,6 +80,15 @@ export function ExplorerUploadStatus({
         <span className="ml-auto font-mono text-[10px] tabular-nums text-primary">
           {totalPercent}%
         </span>
+        {active && onCancel ? (
+          <button
+            type="button"
+            className="inline-flex h-7 items-center rounded-[10px] border border-border px-2 text-[10px] font-medium hover:bg-muted"
+            onClick={onCancel}
+          >
+            {labels.cancelQueue}
+          </button>
+        ) : null}
         {!active ? (
           <button
             type="button"
@@ -95,6 +108,16 @@ export function ExplorerUploadStatus({
           <li key={item.id} data-upload-id={item.id} className="min-w-0 shrink-0">
             <div className="flex items-center gap-2">
               <span className="min-w-0 flex-1 truncate text-xs">{item.name}</span>
+              {onRemove ? (
+                <button
+                  type="button"
+                  aria-label={`${labels.removeUpload} ${item.name}`}
+                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-muted"
+                  onClick={() => onRemove(item.id)}
+                >
+                  <X aria-hidden="true" className="size-3.5" />
+                </button>
+              ) : null}
               <span
                 className={cn(
                   "shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground",

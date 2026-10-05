@@ -46,6 +46,8 @@ export function useUploadQueue(options: {
   readonly items: ReadonlyArray<UploadQueueItem>;
   readonly enqueue: (files: ReadonlyArray<File>, parentId: string | null) => void;
   readonly dismiss: () => void;
+  readonly cancel: () => void;
+  readonly remove: (id: string) => void;
   readonly active: boolean;
 } {
   const requestUploadRef = useRef(options.requestUpload);
@@ -55,6 +57,9 @@ export function useUploadQueue(options: {
 
   const queueRef = useRef<InternalItem[]>([]);
   const running = useRef(false);
+  const dropped = useRef(new Set<string>());
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const xhrOwner = useRef<string | null>(null);
   const [items, setItems] = useState<ReadonlyArray<UploadQueueItem>>([]);
 
   const publish = useCallback(() => {
@@ -77,30 +82,46 @@ export function useUploadQueue(options: {
         content: next.content,
         parentId: next.parentId,
       });
+      if (dropped.current.has(next.id)) return;
       let lastPublish = 0;
-      await putFile(target, next, (progress) => {
-        next.progress = progress;
-        const now = Date.now();
-        if (progress === 100 || now - lastPublish > 200) {
-          lastPublish = now;
-          publish();
-        }
-      });
+      await putFile(
+        target,
+        next,
+        (progress) => {
+          next.progress = progress;
+          const now = Date.now();
+          if (progress === 100 || now - lastPublish > 200) {
+            lastPublish = now;
+            publish();
+          }
+        },
+        (xhr) => {
+          xhrRef.current = xhr;
+          xhrOwner.current = next.id;
+        },
+      );
+      if (dropped.current.has(next.id)) return;
       await confirmUploadRef.current?.({
         name: next.name,
         size: next.size,
         type: next.type,
         content: next.content,
       });
+      if (dropped.current.has(next.id)) return;
       next.status = "success";
       next.progress = 100;
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("file-next-uploaded"));
       }
     } catch (error) {
+      if (dropped.current.has(next.id)) return;
       next.status = "error";
       next.error = error instanceof Error ? error.message : "Upload failed";
     } finally {
+      if (xhrOwner.current === next.id) {
+        xhrRef.current = null;
+        xhrOwner.current = null;
+      }
       publish();
       running.current = false;
       void pump();
@@ -130,6 +151,28 @@ export function useUploadQueue(options: {
     [publish, pump],
   );
 
+  const dropIds = useCallback(
+    (ids: ReadonlyArray<string>) => {
+      if (ids.length === 0) return;
+      for (const id of ids) dropped.current.add(id);
+      if (xhrOwner.current && ids.includes(xhrOwner.current)) xhrRef.current?.abort();
+      const idSet = new Set(ids);
+      queueRef.current = queueRef.current.filter((item) => !idSet.has(item.id));
+      publish();
+    },
+    [publish],
+  );
+
+  const remove = useCallback((id: string) => dropIds([id]), [dropIds]);
+
+  const cancel = useCallback(() => {
+    dropIds(
+      queueRef.current
+        .filter((item) => item.status === "queued" || item.status === "uploading")
+        .map((item) => item.id),
+    );
+  }, [dropIds]);
+
   const dismiss = useCallback(() => {
     queueRef.current = queueRef.current.filter(
       (item) => item.status === "queued" || item.status === "uploading",
@@ -152,16 +195,25 @@ export function useUploadQueue(options: {
     };
   }, [active, dismiss, itemCount]);
 
-  return { items, enqueue, dismiss, active };
+  return { items, enqueue, dismiss, cancel, remove, active };
 }
 
 function putFile(
   target: RequestUploadResult,
   file: InternalItem,
   onProgress: (progress: number) => void,
+  onStart: (xhr: XMLHttpRequest) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
     const xhr = new XMLHttpRequest();
+    onStart(xhr);
+    xhr.addEventListener("abort", () => finish(() => reject(new Error("aborted"))));
     xhr.upload.addEventListener("progress", (event) => {
       if (event.lengthComputable) {
         onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
@@ -178,13 +230,13 @@ function putFile(
         } catch {
           /* keep fallback */
         }
-        reject(new Error(message));
+        finish(() => reject(new Error(message)));
         return;
       }
-      resolve();
+      finish(resolve);
     });
     xhr.addEventListener("error", () => {
-      reject(new Error("Upload failed"));
+      finish(() => reject(new Error("Upload failed")));
     });
     xhr.open(target.method ?? "PUT", target.url);
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");

@@ -52,6 +52,8 @@ export type ExplorerLabels = {
   clearClipboard: string;
   uploadStatus: string;
   dismissUploads: string;
+  cancelQueue: string;
+  removeUpload: string;
   uploadQueued: string;
   uploadDone: string;
   uploadFailed: string;
@@ -111,6 +113,8 @@ export const defaultLabels: ExplorerLabels = {
   clearClipboard: "Clear clipboard",
   uploadStatus: "uploading",
   dismissUploads: "Dismiss uploads",
+  cancelQueue: "Cancel queue",
+  removeUpload: "Remove from queue",
   uploadQueued: "Queued",
   uploadDone: "Done",
   uploadFailed: "Failed",
