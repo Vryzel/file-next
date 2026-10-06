@@ -1,6 +1,6 @@
 {
   "name": "@vryzel/file-next-headless",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Headless React hooks for file-next. Requires @vryzel/file-next. No UI.",
   "type": "module",
   "license": "MIT",

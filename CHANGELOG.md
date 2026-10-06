@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 — 2026-10-06
+
+- FileExplorer no longer lists the folder and probes trash twice on mount when `refreshKey` is already set. A later change of that key still reloads.
+
 ## 0.5.0 — 2026-10-05
 
 - Explorer list and grid virtualize the visible window. The next page loads as you scroll; the full-width Load more button is gone.
