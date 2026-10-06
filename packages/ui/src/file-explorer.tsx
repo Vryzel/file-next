@@ -489,11 +489,12 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
     [sourceFiles, sortKey, sortDir],
   );
 
+  const refreshSeen = useRef(refreshKey);
   useEffect(() => {
-    if (refreshKey === undefined) return;
+    if (refreshKey === undefined || refreshSeen.current === refreshKey) return;
+    refreshSeen.current = refreshKey;
     void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
+  }, [refreshKey, reload]);
 
   const handleActivate = useCallback(
     (file: FileNode) => {

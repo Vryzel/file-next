@@ -106,6 +106,49 @@ describe("FileExplorer", () => {
     expect(screen.getByText("a-00")).toBeInTheDocument();
   });
 
+  it("does not repeat the mount fetch when refreshKey is already set", async () => {
+    const listFiles = vi.fn(async () => ({
+      ok: true as const,
+      value: { items: [file("once")] },
+    }));
+    const listTrash = vi.fn(async () => ({
+      ok: true as const,
+      value: { items: [] as const },
+    }));
+    const view = render(
+      <FileExplorer
+        tenantId="demo"
+        parentId={null}
+        listFiles={listFiles}
+        listTrash={listTrash}
+        actions={actions}
+        refreshKey={0}
+      />,
+    );
+    await waitFor(() => {
+      expect(listFiles).toHaveBeenCalled();
+    });
+    expect(listFiles).toHaveBeenCalledTimes(1);
+    expect(listFiles).toHaveBeenCalledWith({ parentId: null, limit: 50, cursor: undefined });
+    expect(listTrash).toHaveBeenCalledTimes(1);
+    expect(listTrash).toHaveBeenCalledWith({ limit: 1 });
+
+    view.rerender(
+      <FileExplorer
+        tenantId="demo"
+        parentId={null}
+        listFiles={listFiles}
+        listTrash={listTrash}
+        actions={actions}
+        refreshKey={1}
+      />,
+    );
+    await waitFor(() => {
+      expect(listFiles).toHaveBeenCalledTimes(2);
+    });
+    expect(listTrash).toHaveBeenCalledTimes(2);
+  });
+
   it("mounts only the visible window of a long list", async () => {
     stubBox(360);
     const items = Array.from({ length: 80 }, (_, i) => file(`file-${String(i).padStart(2, "0")}`));
