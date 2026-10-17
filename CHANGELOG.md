@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 — 2026-10-17
+
+- Opening a folder shows a loading layer over the previous listing instead of looking unresponsive. Stale rows are dimmed and cannot be clicked while the next listing loads.
+- Re-opening the folder that is already loading is ignored, so breadcrumbs and the URL cannot double up.
+- `@vryzel/file-next-ui` accepts `itemLocks`, a per-item callback that disables just rename and delete (context menu, F2, Delete, selection toast). `protectedIds` also greys out preview and download, which is why locks are separate.
+
 ## 0.5.1 — 2026-10-06
 
 - FileExplorer no longer lists the folder and probes trash twice on mount when `refreshKey` is already set. A later change of that key still reloads.
