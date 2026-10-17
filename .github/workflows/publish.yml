@@ -14,6 +14,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the guard below can see main.
+          fetch-depth: 0
+
+      - name: Refuse tags that are not on main
+        # v0.2.0-v0.5.1 were published from feat/* branches and never merged, so
+        # main drifted a year behind what npm was serving. See docs/RELEASING.md.
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_REF_NAME" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME is not reachable from origin/main."
+            echo "::error::Merge the release branch into main before tagging (docs/RELEASING.md)."
+            exit 1
+          fi
+
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
