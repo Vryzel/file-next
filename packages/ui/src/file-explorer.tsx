@@ -281,6 +281,9 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
   const browseCursor = useRef<string | undefined>(undefined);
   const overlayCursor = useRef<string | undefined>(undefined);
   const loadingMoreRef = useRef(false);
+  // Folder the consumer is already navigating to. Re-activating the same row
+  // while its listing is in flight is ignored, so crumbs/URLs cannot double up.
+  const openingFolderIdRef = useRef<string | null>(null);
   const overlayMoreRef = useRef(false);
   const browseGen = useRef(0);
   const [overlayFiles, setOverlayFiles] = useState<ReadonlyArray<FileNode> | null>(null);
@@ -358,6 +361,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
         setLoadingMore(false);
         return;
       }
+      if (mode === "reset") openingFolderIdRef.current = null;
       if (result.ok) {
         browseCursor.current = result.value.nextCursor;
         setBrowseHasMore(Boolean(result.value.nextCursor));
@@ -493,6 +497,8 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
     (file: FileNode) => {
       if (file.id === DRAFT_FOLDER_ID) return;
       if (file.kind === "folder") {
+        if (openingFolderIdRef.current === file.id) return;
+        openingFolderIdRef.current = file.id;
         onOpenFolder?.(file);
         return;
       }
@@ -698,6 +704,8 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
     ];
   }, [draftFolderName, parentId, sortedFiles, tenantId]);
 
+  const listing = overlayLoading || pageStatus === "loading";
+
   const renamingId = draftFolderName != null ? DRAFT_FOLDER_ID : renameTarget?.id ?? null;
 
   const openUpload = () => uploadInputRef.current?.click();
@@ -769,8 +777,21 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {(overlayLoading || pageStatus === "loading") && displayFiles.length === 0 ? (
+      <div
+        aria-busy={listing}
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto",
+          // Stale rows stay mounted while the next listing loads, so dim them and
+          // swallow clicks instead of letting the user re-open the same folder.
+          listing && displayFiles.length > 0 && "pointer-events-none opacity-60",
+        )}
+      >
+        {listing && displayFiles.length > 0 ? (
+          <div aria-hidden className="h-0.5 w-full overflow-hidden bg-muted">
+            <div className="h-full w-1/3 animate-pulse bg-primary" />
+          </div>
+        ) : null}
+        {listing && displayFiles.length === 0 ? (
           <p className="px-4 py-12 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
             {labels.loading}
           </p>
