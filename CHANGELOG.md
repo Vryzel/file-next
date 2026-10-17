@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.3 — 2026-10-17
+
+- `drizzle-orm` bumped to 0.45.4 for [GHSA-gpj5-g38j-94v9](https://github.com/advisories/GHSA-gpj5-g38j-94v9) — SQL injection via improperly escaped SQL identifiers. Only the table schemas use drizzle; the stores write raw SQL, so nothing else changed.
+
 ## 0.5.2 — 2026-10-17
 
 - Opening a folder shows a loading layer over the previous listing instead of looking unresponsive. Stale rows are dimmed and cannot be clicked while the next listing loads.
