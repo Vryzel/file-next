@@ -5,18 +5,18 @@ import type { FileNode, FileSystemError, Result } from "@vryzel/file-next";
 
 export async function listFilesAction(input: {
   parentId: string | null;
-}): Promise<Result<{ items: FileNode[] }, FileSystemError>> {
+}): Promise<Result<{ items: ReadonlyArray<FileNode> }, FileSystemError>> {
   return getActions().listFiles(input);
 }
 
 export async function searchFilesAction(input: {
   query: string;
-}): Promise<Result<{ items: FileNode[] }, FileSystemError>> {
+}): Promise<Result<{ items: ReadonlyArray<FileNode> }, FileSystemError>> {
   return getActions().searchFiles(input);
 }
 
 export async function listTrashAction(): Promise<
-  Result<{ items: FileNode[] }, FileSystemError>
+  Result<{ items: ReadonlyArray<FileNode> }, FileSystemError>
 > {
   return getActions().listTrash();
 }
