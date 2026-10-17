@@ -101,6 +101,15 @@ export interface FileExplorerProps {
   readonly onDownload?: (file: FileNode) => void;
   readonly extraFileAction?: { label: string; onSelect: (file: FileNode) => void };
   readonly protectedIds?: ReadonlyArray<string>;
+  /**
+   * Per-item rename/delete locks, resolved by the consumer (permissions,
+   * business rules). Locked actions are disabled in the context menu, blocked
+   * on F2/Delete, and excluded from the selection toast.
+   */
+  readonly itemLocks?: (file: FileNode) => {
+    rename?: boolean;
+    delete?: boolean;
+  };
   readonly labels?: Partial<ExplorerLabels>;
 }
 
@@ -255,9 +264,14 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
     onDownload,
     extraFileAction,
     protectedIds,
+    itemLocks,
   } = props;
   const labels = useExplorerLabels();
   const protectedSet = useMemo(() => new Set(protectedIds ?? []), [protectedIds]);
+  const locksFor = useCallback(
+    (file: FileNode) => itemLocks?.(file) ?? {},
+    [itemLocks],
+  );
 
   const explorer = useFileExplorer({
     listFiles: ((input: { parentId: string | null }) =>
@@ -645,6 +659,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
       }
       if (event.key === "F2" && selected && !trashOpen) {
         event.preventDefault();
+        if (locksFor(selected).rename) return;
         setRenameTarget(selected);
         return;
       }
@@ -654,7 +669,8 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
           if (actions.purgeNode) setPurgeTargets(selectedFiles);
           return;
         }
-        if (selectedFiles.some((file) => protectedSet.has(file.id))) return;
+        if (selectedFiles.some((file) => protectedSet.has(file.id) || locksFor(file).delete))
+          return;
         setDeleteTargets(selectedFiles);
         return;
       }
@@ -668,6 +684,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
       clearSelection,
       copyToClipboard,
       handleActivate,
+      locksFor,
       pasteClipboard,
       protectedSet,
       selected,
@@ -903,6 +920,8 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
         target={menu}
         mode={trashOpen ? "trash" : "browse"}
         protectedItem={menu?.kind === "item" ? protectedSet.has(menu.file.id) : false}
+        renameLocked={menu?.kind === "item" ? Boolean(locksFor(menu.file).rename) : false}
+        deleteLocked={menu?.kind === "item" ? Boolean(locksFor(menu.file).delete) : false}
         extraFileAction={extraFileAction}
         actions={{
           deleteFile: async (input) => {
@@ -945,7 +964,10 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
 
       <ExplorerSelectionToast
         files={selectedFiles}
-        protectedIds={protectedSet}
+        protectedIds={new Set([
+          ...protectedSet,
+          ...selectedFiles.filter((file) => locksFor(file).delete).map((file) => file.id),
+        ])}
         trashOpen={trashOpen}
         onDownload={onDownload}
         onCopy={trashOpen ? undefined : () => copyToClipboard(selectedFiles)}

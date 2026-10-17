@@ -35,6 +35,8 @@ export interface ExplorerContextMenuProps {
   readonly mode?: "browse" | "trash";
   readonly actions: ExplorerContextMenuActions;
   readonly protectedItem?: boolean;
+  readonly renameLocked?: boolean;
+  readonly deleteLocked?: boolean;
   readonly onClose: () => void;
   readonly onPreview?: (file: FileNode) => void;
   readonly onDownload?: (file: FileNode) => void;
@@ -59,6 +61,8 @@ export function ExplorerContextMenu(
     mode = "browse",
     actions,
     protectedItem = false,
+    renameLocked = false,
+    deleteLocked = false,
     onClose,
     onPreview,
     onDownload,
@@ -113,7 +117,7 @@ export function ExplorerContextMenu(
   };
 
   const itemClass =
-    "flex w-full min-h-11 cursor-pointer items-center gap-2 rounded-[10px] px-3 py-2.5 text-left text-sm outline-none hover:bg-accent disabled:opacity-40 sm:min-h-0 sm:px-2.5 sm:py-1.5";
+    "flex w-full min-h-11 cursor-pointer items-center gap-2 rounded-[10px] px-3 py-2.5 text-left text-sm outline-none hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0 sm:px-2.5 sm:py-1.5";
 
   return (
     <div
@@ -188,7 +192,17 @@ export function ExplorerContextMenu(
             </button>
           ) : null}
           {onRename ? (
-            <button type="button" role="menuitem" className={itemClass} onClick={() => { close(); onRename(target.file); }}>
+            <button
+              type="button"
+              role="menuitem"
+              className={itemClass}
+              disabled={renameLocked}
+              onClick={() => {
+                if (renameLocked) return;
+                close();
+                onRename(target.file);
+              }}
+            >
               <Pencil aria-hidden="true" className="size-4" />
               {labels.rename}
             </button>
@@ -225,10 +239,10 @@ export function ExplorerContextMenu(
           <button
             type="button"
             role="menuitem"
-            disabled={protectedItem}
+            disabled={protectedItem || deleteLocked}
             className={cn(itemClass, "text-destructive")}
             onClick={() => {
-              if (protectedItem) return;
+              if (protectedItem || deleteLocked) return;
               close();
               if (onRequestDelete) onRequestDelete(target.file);
               else void actions.deleteFile({ id: target.file.id });

@@ -222,4 +222,26 @@ describe("FileExplorer", () => {
     await user.dblClick(await screen.findByText("Designs"));
     expect(onOpenFolder).toHaveBeenCalledTimes(2);
   });
+
+  it("disables rename and delete in the context menu when the consumer locks the item", async () => {
+    stubBox(360);
+    const user = userEvent.setup();
+    render(
+      <FileExplorer
+        tenantId="demo"
+        parentId={null}
+        listFiles={async () => ({ ok: true as const, value: { items: [file("locked")] } })}
+        itemLocks={() => ({ rename: true, delete: true })}
+        actions={actions}
+      />,
+    );
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: await screen.findByText("locked"),
+    });
+    const rename = await screen.findByRole("menuitem", { name: /rename/i });
+    const trash = await screen.findByRole("menuitem", { name: /move to trash/i });
+    expect(rename).toBeDisabled();
+    expect(trash).toBeDisabled();
+  });
 });
