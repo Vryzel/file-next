@@ -20,6 +20,7 @@ export default defineConfig({
     "@vryzel/file-next/errors",
     "@vryzel/file-next-headless",
     "lucide-react",
+    "@tanstack/react-virtual",
   ],
   outExtension({ format }) {
     return { js: format === "cjs" ? ".cjs" : ".js" };

@@ -3,6 +3,7 @@
  * Streams the object through the app. The client never sees the bucket or key.
  */
 import { asS3Key } from "@/types/branded";
+import { signedContentDisposition } from "@/storage/content-disposition";
 import type { FileSystem } from "@/storage/filesystem";
 import type { MetadataStore } from "../../metadata/store";
 
@@ -63,13 +64,14 @@ export const createShareRouteHandler = (
 
     const download = new URL(req.url).searchParams.get("download") === "1";
     const headers = new Headers();
-    headers.set(
-      "Content-Type",
-      node.mimeType || read.value.contentType || "application/octet-stream",
-    );
+    const mime = node.mimeType || read.value.contentType || "application/octet-stream";
+    headers.set("Content-Type", mime);
+    const disposition = download
+      ? "attachment"
+      : signedContentDisposition("inline", mime);
     headers.set(
       "Content-Disposition",
-      `${download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(node.name)}`,
+      `${disposition}; filename*=UTF-8''${encodeURIComponent(node.name)}`,
     );
     headers.set("Cache-Control", "private, no-store");
     headers.set("Content-Length", String(read.value.body.byteLength));

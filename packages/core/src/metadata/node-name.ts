@@ -41,3 +41,16 @@ function truncateNodeName(name: string, max: number): string {
   if (stemMax < 1) return name.slice(0, max);
   return name.slice(0, stemMax) + ext;
 }
+
+export function numberedDuplicateName(original: string, n: number): string {
+  if (n <= 0) return original;
+  const dot = original.lastIndexOf(".");
+  const ext =
+    dot > 0 && /^[a-zA-Z0-9]{1,8}$/.test(original.slice(dot + 1))
+      ? original.slice(dot)
+      : "";
+  const stem = ext ? original.slice(0, -ext.length) : original;
+  const suffix = ` (${n})`;
+  const stemMax = NODE_NAME_MAX_LENGTH - suffix.length - ext.length;
+  return (stemMax > 0 ? stem.slice(0, stemMax) : "") + suffix + ext;
+}

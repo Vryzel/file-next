@@ -37,10 +37,15 @@ export function UploadQueueProvider({
   const panel = useMemo(
     () => (
       <div className="fixed right-4 bottom-4 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2">
-        <ExplorerUploadStatus items={uploads.items} onDismiss={uploads.dismiss} />
+        <ExplorerUploadStatus
+          items={uploads.items}
+          onDismiss={uploads.dismiss}
+          onCancel={uploads.cancel}
+          onRemove={uploads.remove}
+        />
       </div>
     ),
-    [uploads.dismiss, uploads.items],
+    [uploads.cancel, uploads.dismiss, uploads.items, uploads.remove],
   );
 
   return (

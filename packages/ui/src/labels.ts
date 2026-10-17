@@ -52,11 +52,17 @@ export type ExplorerLabels = {
   clearClipboard: string;
   uploadStatus: string;
   dismissUploads: string;
+  cancelQueue: string;
+  removeUpload: string;
   uploadQueued: string;
   uploadDone: string;
   uploadFailed: string;
   unknownType: string;
   previewUnavailable: string;
+  closePreview: string;
+  zoomIn: string;
+  zoomOut: string;
+  zoomFit: string;
 };
 
 export const defaultLabels: ExplorerLabels = {
@@ -111,11 +117,17 @@ export const defaultLabels: ExplorerLabels = {
   clearClipboard: "Clear clipboard",
   uploadStatus: "uploading",
   dismissUploads: "Dismiss uploads",
+  cancelQueue: "Cancel queue",
+  removeUpload: "Remove from queue",
   uploadQueued: "Queued",
   uploadDone: "Done",
   uploadFailed: "Failed",
   unknownType: "Unknown type",
   previewUnavailable: "Preview is not available for this file.",
+  closePreview: "Close preview",
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
+  zoomFit: "Fit",
 };
 
 const LabelsContext = createContext<ExplorerLabels>(defaultLabels);

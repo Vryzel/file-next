@@ -270,6 +270,7 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
   });
 
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [trashOpen, setTrashOpen] = useState(false);
   const [pageItems, setPageItems] = useState<ReadonlyArray<FileNode>>([]);
@@ -439,6 +440,11 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
     [listTrash, query, searchFiles, trashOpen],
   );
 
+  const loadNext = useCallback(() => {
+    if (overlayFiles) void loadOverlay("more");
+    else void loadBrowse("more");
+  }, [loadBrowse, loadOverlay, overlayFiles]);
+
   const refreshTrashFlag = useCallback(async () => {
     if (!listTrash) {
       setTrashHasItems(false);
@@ -487,11 +493,12 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
     [sourceFiles, sortKey, sortDir],
   );
 
+  const refreshSeen = useRef(refreshKey);
   useEffect(() => {
-    if (refreshKey === undefined) return;
+    if (refreshKey === undefined || refreshSeen.current === refreshKey) return;
+    refreshSeen.current = refreshKey;
     void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
+  }, [refreshKey, reload]);
 
   const handleActivate = useCallback(
     (file: FileNode) => {
@@ -777,10 +784,11 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
         />
       </div>
 
-      <div
+<div
+        ref={scrollRef}
         aria-busy={listing}
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto",
+          "min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-x-contain",
           // Stale rows stay mounted while the next listing loads, so dim them and
           // swallow clicks instead of letting the user re-open the same folder.
           listing && displayFiles.length > 0 && "pointer-events-none opacity-60",
@@ -837,6 +845,10 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
               renamingId={renamingId}
               onRenameCommit={commitRename}
               onRenameCancel={cancelRename}
+              scrollRef={scrollRef}
+              hasMore={hasMore}
+              loadingMore={loadingMore || overlayMore}
+              onLoadMore={loadNext}
             />
           </div>
         ) : (
@@ -863,26 +875,14 @@ function FileExplorerInner(props: FileExplorerProps): React.ReactElement {
               renamingId={renamingId}
               onRenameCommit={commitRename}
               onRenameCancel={cancelRename}
+              scrollRef={scrollRef}
+              hasMore={hasMore}
+              loadingMore={loadingMore || overlayMore}
+              onLoadMore={loadNext}
             />
           </div>
         )}
       </div>
-
-      {hasMore && sortedFiles.length > 0 ? (
-        <div className="shrink-0 border-t border-border p-3">
-          <button
-            type="button"
-            disabled={loadingMore || overlayMore}
-            onClick={() => {
-              if (overlayFiles) void loadOverlay("more");
-              else void loadBrowse("more");
-            }}
-            className="inline-flex h-8 w-full items-center justify-center rounded-[10px] border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
-          >
-            {loadingMore || overlayMore ? labels.loading : labels.loadMore}
-          </button>
-        </div>
-      ) : null}
 
       <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-2">
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">

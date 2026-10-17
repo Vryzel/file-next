@@ -9,6 +9,7 @@ import { FileSystemError } from "@/errors";
 import { asS3Key, asTenantId, asUserId, type S3Key, type TenantId } from "@/types/branded";
 import type { FileSystem } from "../storage/filesystem";
 import type { MetadataStore, FileNode, CreateNodeInput } from "../metadata/store";
+import { numberedDuplicateName } from "../metadata/node-name";
 
 export type OrphanOp = "delete" | "restore";
 
@@ -126,6 +127,29 @@ export const createWriteThrough = (
   }) => Promise<Result<ReconcileReport, FileSystemError>>;
   getOrphans: () => ReadonlyArray<PendingOrphan>;
 } => {
+  const createFileNode = async (
+    input: CreateNodeInput,
+  ): Promise<Result<FileNode, FileSystemError>> => {
+    for (let n = 0; n < 1000; n++) {
+      const created = await store.createNode({
+        ...input,
+        name: numberedDuplicateName(input.name, n),
+      });
+      if (created.ok) return created;
+      if (
+        created.error.code !== "Conflict" ||
+        !created.error.message.includes("already exists in this folder")
+      ) {
+        return created;
+      }
+    }
+    // ponytail: cap 1000, timestamp suffix if the folder is that full
+    return store.createNode({
+      ...input,
+      name: numberedDuplicateName(input.name, Date.now()),
+    });
+  };
+
   const writeThroughFile = async (
     input: WriteThroughFileInput,
   ): Promise<Result<FileNode, FileSystemError>> => {
@@ -171,7 +195,7 @@ export const createWriteThrough = (
       ownerId,
       metadata: input.metadata,
     };
-    const c = await store.createNode(createInput);
+    const c = await createFileNode(createInput);
     if (!c.ok) {
       const enqueue = await store.enqueueOrphan({
         tenantId,
@@ -353,7 +377,7 @@ export const createWriteThrough = (
       }
     }
 
-    return store.createNode({
+    return createFileNode({
       id: input.id,
       tenantId,
       parentId: input.parentId,

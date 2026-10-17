@@ -9,7 +9,12 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockClient } from "aws-sdk-client-mock";
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+} from "@aws-sdk/client-s3";
 import { createWriteThrough } from "@/sync/write-through";
 import { createFileSystem } from "@/storage/factory";
 import { createS3Client } from "@/storage/s3-adapter/client";
@@ -102,21 +107,23 @@ describe("PR 6: writeThroughFile — compensation", () => {
   it("S3 succeeds, metadata insert fails: orphan logged + S3 cleanup attempted", async () => {
     s3Mock.on(PutObjectCommand).resolves({ ETag: "ok" });
 
-    // Pre-create a node with the same name to force the dup Conflict
-    // on the metadata insert (createNode rejects duplicate names).
+    // Name collisions are renamed. A duplicate node id still fails.
+    const id = "11111111-1111-4111-8111-111111111111";
     await store.createNode({
+      id,
       tenantId: TENANT_A,
       parentId: null,
-      name: "dupe.txt",
+      name: "taken-id.txt",
       kind: "file",
       size: 1,
       mimeType: "text/plain",
-      s3Key: "dupe.txt",
+      s3Key: id,
       ownerId: USER,
     });
     s3Mock.on(DeleteObjectCommand).resolves({});
 
     const r = await wt.writeThroughFile({
+      id,
       tenantId: TENANT_A,
       parentId: null,
       name: "dupe.txt",
@@ -291,20 +298,23 @@ describe("v0.2: per-tenant boot drain", () => {
     s3Mock.on(DeleteObjectCommand).resolves({});
 
     // metadata insert succeeds -> no enqueue path exercised; force one
-    // by pre-creating a duplicate name.
+    // with a duplicate node id (name collisions are renamed).
+    const id = "22222222-2222-4222-8222-222222222222";
     await store.createNode({
+      id,
       tenantId: TENANT_A,
       parentId: null,
-      name: "conflict.txt",
+      name: "other.txt",
       kind: "file",
       size: 1,
       mimeType: "text/plain",
-      s3Key: "conflict.txt",
+      s3Key: id,
       ownerId: USER,
     });
     enqueueSpy.mockClear();
 
     const r = await wt.writeThroughFile({
+      id,
       tenantId: TENANT_A,
       parentId: null,
       name: "conflict.txt",
@@ -321,5 +331,61 @@ describe("v0.2: per-tenant boot drain", () => {
     expect(r.error.message).toMatch(/orphan enqueue failed/);
 
     enqueueSpy.mockRestore();
+  });
+});
+
+describe("duplicate display names", () => {
+  it("second writeThroughFile of hello.txt succeeds as hello (1).txt", async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    const upload = (body: string) =>
+      wt.writeThroughFile({
+        tenantId: TENANT_A,
+        parentId: null,
+        name: "hello.txt",
+        body: new TextEncoder().encode(body),
+        contentType: "text/plain",
+        ownerId: USER,
+      });
+    const first = await upload("a");
+    const second = await upload("b");
+
+    expect(first.ok && first.value.name).toBe("hello.txt");
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.value.name).toBe("hello (1).txt");
+    expect(second.value.s3Key).toBe(second.value.id);
+    expect(s3Mock.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+  });
+
+  it("confirmUpload stores a taken name as hello (1).txt and keeps the id key", async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    s3Mock.on(HeadObjectCommand).resolves({
+      ContentLength: 4,
+      ContentType: "text/plain",
+    });
+    const first = await wt.writeThroughFile({
+      tenantId: TENANT_A,
+      parentId: null,
+      name: "hello.txt",
+      body: new TextEncoder().encode("hello"),
+      contentType: "text/plain",
+      ownerId: USER,
+    });
+    expect(first.ok).toBe(true);
+
+    const second = await wt.confirmUpload({
+      tenantId: TENANT_A,
+      id: "confirm-hello-2",
+      parentId: null,
+      name: "hello.txt",
+      contentType: "text/plain",
+      size: 4,
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.value.name).toBe("hello (1).txt");
+    expect(second.value.id).toBe("confirm-hello-2");
+    expect(second.value.s3Key).toBe("confirm-hello-2");
   });
 });

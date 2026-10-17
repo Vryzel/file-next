@@ -28,6 +28,7 @@ import type {
   PresignedDownloadInput,
   PresignedDownloadOutput,
 } from "../adapter";
+import { signedContentDisposition } from "../content-disposition";
 
 export const createPresignedUploadUrl = async (
   client: S3Client,
@@ -56,6 +57,7 @@ export const createPresignedDownloadUrl = async (
     const cmd = new GetObjectCommand({
       Bucket: config.bucket,
       Key: input.key,
+      ResponseContentDisposition: signedContentDisposition(input.disposition, input.contentType),
     });
     const url = await getSignedUrl(client, cmd, { expiresIn: input.expiresIn ?? 900 });
     return ok({ url });

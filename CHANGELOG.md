@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.1 — 2026-10-06
+
+- FileExplorer no longer lists the folder and probes trash twice on mount when `refreshKey` is already set. A later change of that key still reloads.
+
+## 0.5.0 — 2026-10-05
+
+- Explorer list and grid virtualize the visible window. The next page loads as you scroll; the full-width Load more button is gone.
+- Upload queue scrolls the full list, follows the file currently uploading, and shows byte-weighted total progress. Cancel stops the active upload and drops the rest of the queue. Each row can be removed.
+- A same-folder upload whose name is already taken is stored as `name (1).ext` instead of failing. Folder create, move, and rename still conflict.
+- File preview opens as a lightbox. Images zoom with the controls, the wheel, or a double-click. PDF, text, video, and audio use the same full-screen frame, without a dialog card.
+- Signed downloads are `attachment`. `inline` is kept only for preview types that do not execute as a page. HTML and SVG stay attachments.
+- `@vryzel/file-next-ui` depends on `@tanstack/react-virtual`.
+
 ## 0.4.5 — 2026-09-03
 
 - UI/headless npm listings say they require `@vryzel/file-next`. Install commands include the peers.
