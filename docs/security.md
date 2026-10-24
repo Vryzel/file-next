@@ -10,9 +10,11 @@
 | Server ↔ database | TLS + optional Postgres RLS | Connection string; rotate credentials. |
 | Browser ↔ server | Your auth | Pass `getAuth` into `createServerActions` and route handlers. Wrap extra routes with `withAuth`. |
 
-`tenantId` is **not** accepted from the client on server actions. If you skip `getAuth`, you do not have a multi-tenant product.
+`tenantId` is **not** accepted from the client on server actions. Upload and download route handlers throw at startup unless you pass `getAuth` or set `unsafeNoAuth: true`.
 
-Upload and download route handlers generate the object id on the server. Do not sign a client-supplied key.
+Upload and download route handlers generate the object id on the server. Download signs a key only when it is a live node for the caller’s tenant. Do not sign a client-supplied key.
+
+Path cascades filter by `tenant_id` and escape `%` / `_`. Postgres RLS does not apply to a superuser or a role with `BYPASSRLS`. Connect the app with `NOSUPERUSER NOBYPASSRLS`.
 
 ## Tenant isolation (one bucket)
 
@@ -62,7 +64,7 @@ Presigned uploads are `PUT`. Configure the bucket:
 ## Checklist
 
 - [ ] Every `createServerActions` call has `getAuth` from the session.
-- [ ] Upload/download handlers pass `getAuth` or sit behind `withAuth`.
+- [ ] Upload/download handlers pass `getAuth` (or an explicit `unsafeNoAuth` only for a throwaway demo).
 - [ ] Bucket CORS allows PUT from your origin only.
 - [ ] IAM is scoped to one bucket (and a prefix if you can).
 - [ ] `FILE_NEXT_*` secrets never enter the client bundle.

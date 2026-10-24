@@ -42,9 +42,9 @@
  *                         Requires CREATE EXTENSION pg_trgm.
  *
  * Tenant isolation is enforced in app code (every query filters
- * by tenant_id). For a stricter setup, RLS policies + a per-query
- * `SET LOCAL app.current_tenant` would close the gap at the DB.
- * Tracked for a follow-up.
+ * by tenant_id, including path cascades) and by RLS. RLS does not
+ * apply to superusers or roles with BYPASSRLS, so the tenant_id
+ * predicate is required even when FORCE ROW LEVEL SECURITY is on.
  *
  * The `reconcile()` method is a no-op scan — same as the memory
  * and SQLite stores. Real bucket-walking reconcile would need
@@ -514,7 +514,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
         return err(
           new FileSystemError({
             code: "InternalError",
-            message: `createNode failed: ${(e as Error).message}`,
+            message: "createNode failed",
             retryable: false,
           }),
         );
@@ -650,21 +650,20 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
           await client.query(
             `UPDATE "${schema}".nodes
              SET parent_id = $1, name = $2, path = $3, updated_at = now()
-             WHERE id = $4`,
-            [input.newParentId, newName, newPath, input.id],
+             WHERE id = $4 AND tenant_id = $5`,
+            [input.newParentId, newName, newPath, input.id, input.tenantId],
           );
           if (current.path !== newPath) {
             // Prefix-only replace via substring — same trick as
             // the SQLite store, but using Postgres substring()
-            // (1-indexed). SUBSTR's LENGTH on the old path + 1
-            // gives the position of the leading '/' in the
-            // descendant path.
+            // (1-indexed). length($2) is the raw old path.
+            // $4 is escaped so "%" and "_" stay literal.
             await client.query(
               `UPDATE "${schema}".nodes
                SET path = $1 || substring(path FROM length($2) + 1),
                    updated_at = now()
-               WHERE path LIKE $2 || '/%'`,
-              [newPath, current.path],
+               WHERE tenant_id = $3 AND path LIKE $4 || '/%' ESCAPE '\\'`,
+              [newPath, current.path, input.tenantId, escapeLike(current.path)],
             );
           }
         });
@@ -681,7 +680,7 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
         return err(
           new FileSystemError({
             code: "InternalError",
-            message: `moveNode failed: ${(e as Error).message}`,
+            message: "moveNode failed",
             retryable: false,
           }),
         );
@@ -738,16 +737,16 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
         await q(input.tenantId,
           `UPDATE "${schema}".nodes
            SET deleted_at = now(), updated_at = now()
-           WHERE (id = $1 OR path LIKE $2 || '/%')
+           WHERE tenant_id = $1 AND (id = $2 OR path LIKE $3 || '/%' ESCAPE '\\')
              AND deleted_at IS NULL`,
-          [input.id, node.path],
+          [input.tenantId, input.id, escapeLike(node.path)],
         );
       } else {
         await q(input.tenantId,
           `UPDATE "${schema}".nodes
            SET deleted_at = now(), updated_at = now()
-           WHERE id = $1`,
-          [input.id],
+           WHERE id = $1 AND tenant_id = $2`,
+          [input.id, input.tenantId],
         );
       }
       return ok(undefined);
@@ -773,23 +772,23 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
           }),
         );
       }
-      const like = `${node.path}/%`;
+      const like = `${escapeLike(node.path)}/%`;
       const files = await q<{ s3_key: string }>(input.tenantId,
         `SELECT s3_key FROM "${schema}".nodes
          WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND kind = 'file' AND s3_key <> ''
-           AND (id = $2 OR path LIKE $3)`,
+           AND (id = $2 OR path LIKE $3 ESCAPE '\\')`,
         [input.tenantId, input.id, like],
       );
       await q(input.tenantId,
         `DELETE FROM "${schema}".shares WHERE tenant_id = $1 AND node_id IN (
            SELECT id FROM "${schema}".nodes
-           WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND (id = $2 OR path LIKE $3)
+           WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND (id = $2 OR path LIKE $3 ESCAPE '\\')
          )`,
         [input.tenantId, input.id, like],
       );
       await q(input.tenantId,
         `DELETE FROM "${schema}".nodes
-         WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND (id = $2 OR path LIKE $3)`,
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND (id = $2 OR path LIKE $3 ESCAPE '\\')`,
         [input.tenantId, input.id, like],
       );
       return ok({ s3Keys: files.rows.map((row) => row.s3_key) });
@@ -876,11 +875,11 @@ const buildInner = (pg: PgTypes, options: PostgresStoreOptions): MetadataStore =
           res = await q<NodeRow>(input.tenantId,
             `SELECT * FROM "${schema}".nodes
              WHERE tenant_id = $1 AND deleted_at IS NULL
-               AND (id = $2 OR path LIKE $3 || '/%')
+               AND (id = $2 OR path LIKE $3 || '/%' ESCAPE '\\')
                AND name ILIKE $4 ESCAPE '\\'
              ORDER BY lower(name) ASC
              LIMIT $5`,
-            [input.tenantId, input.parentId, parent.path, pattern, limit],
+            [input.tenantId, input.parentId, escapeLike(parent.path), pattern, limit],
           );
         }
       }

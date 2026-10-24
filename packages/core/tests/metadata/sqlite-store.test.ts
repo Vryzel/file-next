@@ -729,6 +729,135 @@ describe("createSqliteStore — tenant isolation", () => {
     expect(a.ok).toBe(true);
     expect(b.ok).toBe(true);
   });
+
+  it("does not move, delete, or purge another tenant that shares the folder path", async () => {
+    const folderA = await ok(
+      store.createNode(baseFolderInput({ tenantId: TENANT_A, name: "Documents" })),
+      "folderA",
+    );
+    await ok(
+      store.createNode(
+        baseFileInput({
+          tenantId: TENANT_A,
+          parentId: folderA.id,
+          name: "nomina.pdf",
+          s3Key: "a-key",
+        }),
+      ),
+      "fileA",
+    );
+    const folderB = await ok(
+      store.createNode(baseFolderInput({ tenantId: TENANT_B, name: "Documents" })),
+      "folderB",
+    );
+    const fileB = await ok(
+      store.createNode(
+        baseFileInput({
+          tenantId: TENANT_B,
+          parentId: folderB.id,
+          name: "nomina.pdf",
+          s3Key: "b-key",
+        }),
+      ),
+      "fileB",
+    );
+
+    await ok(
+      store.moveNode({
+        tenantId: TENANT_A,
+        id: folderA.id,
+        newParentId: null,
+        newName: "Pwned",
+      }),
+      "moveA",
+    );
+    const afterMove = await ok(store.getNode({ tenantId: TENANT_B, id: fileB.id }), "afterMove");
+    expect(afterMove?.path).toBe("/Documents/nomina.pdf");
+
+    await ok(
+      store.deleteNode({ tenantId: TENANT_A, id: folderA.id, recursive: true }),
+      "deleteA",
+    );
+    const afterDelete = await ok(
+      store.getNode({ tenantId: TENANT_B, id: fileB.id }),
+      "afterDelete",
+    );
+    expect(afterDelete?.path).toBe("/Documents/nomina.pdf");
+
+    await ok(
+      store.deleteNode({ tenantId: TENANT_B, id: folderB.id, recursive: true }),
+      "deleteB",
+    );
+    await ok(store.purgeNode({ tenantId: TENANT_A, id: folderA.id }), "purgeA");
+    const trashB = await ok(store.listTrash({ tenantId: TENANT_B }), "trashB");
+    expect(trashB.items.map((item) => item.id)).toEqual(
+      expect.arrayContaining([folderB.id, fileB.id]),
+    );
+  });
+
+  it("keeps a % or _ folder cascade inside its own subtree", async () => {
+    const wild = await ok(store.createNode(baseFolderInput({ name: "%" })), "wild");
+    await ok(
+      store.createNode(baseFileInput({ parentId: wild.id, name: "inside.txt", s3Key: "in" })),
+      "inside",
+    );
+    const keep = await ok(
+      store.createNode(baseFolderInput({ name: "Facturas" })),
+      "keep",
+    );
+    const invoice = await ok(
+      store.createNode(
+        baseFileInput({ parentId: keep.id, name: "2026.xlsx", s3Key: "inv" }),
+      ),
+      "invoice",
+    );
+    const underscore = await ok(store.createNode(baseFolderInput({ name: "_" })), "underscore");
+    const underFile = await ok(
+      store.createNode(
+        baseFileInput({ parentId: underscore.id, name: "under.txt", s3Key: "under" }),
+      ),
+      "underFile",
+    );
+    const other = await ok(store.createNode(baseFolderInput({ name: "X" })), "other");
+    const important = await ok(
+      store.createNode(
+        baseFileInput({ parentId: other.id, name: "importante.txt", s3Key: "imp" }),
+      ),
+      "important",
+    );
+
+    await ok(
+      store.moveNode({
+        tenantId: TENANT_A,
+        id: underscore.id,
+        newParentId: null,
+        newName: "Kept",
+      }),
+      "renameUnderscore",
+    );
+    const underAfter = await ok(
+      store.getNode({ tenantId: TENANT_A, id: underFile.id }),
+      "underAfter",
+    );
+    expect(underAfter?.path).toBe("/Kept/under.txt");
+
+    await ok(store.deleteNode({ tenantId: TENANT_A, id: wild.id, recursive: true }), "deleteWild");
+    await ok(
+      store.deleteNode({ tenantId: TENANT_A, id: underscore.id, recursive: true }),
+      "deleteUnderscore",
+    );
+
+    const invoiceAfter = await ok(
+      store.getNode({ tenantId: TENANT_A, id: invoice.id }),
+      "invoiceAfter",
+    );
+    const importantAfter = await ok(
+      store.getNode({ tenantId: TENANT_A, id: important.id }),
+      "importantAfter",
+    );
+    expect(invoiceAfter?.path).toBe("/Facturas/2026.xlsx");
+    expect(importantAfter?.path).toBe("/X/importante.txt");
+  });
 });
 
 describe("createSqliteStore — schema persistence", () => {

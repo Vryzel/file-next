@@ -10,6 +10,7 @@ import { asS3Key, asTenantId, asUserId, type S3Key, type TenantId } from "@/type
 import type { FileSystem } from "../storage/filesystem";
 import type { MetadataStore, FileNode, CreateNodeInput } from "../metadata/store";
 import { numberedDuplicateName } from "../metadata/node-name";
+import { isDeniedUploadType } from "../storage/content-disposition";
 
 export type OrphanOp = "delete" | "restore";
 
@@ -358,21 +359,32 @@ export const createWriteThrough = (
     const existing = await store.findByS3Key({ tenantId, s3Key: input.id });
     if (existing.ok && existing.value) return ok(existing.value);
 
-    const st = await adapter.stat({ key: asS3Key(input.id) });
-    const size = st.ok ? st.value.size : (input.size ?? 0);
-    const mimeType = input.contentType ?? (st.ok ? st.value.contentType : "");
-    if (!st.ok && input.size === undefined) return st;
+    const key = asS3Key(input.id);
+    const st = await adapter.stat({ key });
+    if (!st.ok) return st;
+    const size = st.value.size;
+    const mimeType = st.value.contentType || "";
+    const rejectUploaded = async (
+      code: "QuotaExceeded" | "PayloadTooLarge" | "UnsupportedMediaType",
+      message: string,
+    ) => {
+      await adapter.delete({ key });
+      return err(new FileSystemError({ code, message, retryable: false }));
+    };
+    if (isDeniedUploadType(mimeType)) {
+      return rejectUploaded("UnsupportedMediaType", "Content type is not allowed");
+    }
+    if (fs.maxBytes != null && size > fs.maxBytes) {
+      return rejectUploaded("PayloadTooLarge", `Object exceeds maxBytes ${fs.maxBytes}`);
+    }
 
     if (fs.quotaBytes != null) {
       const used = await store.sumSize({ tenantId });
       if (!used.ok) return used;
       if (used.value + size > fs.quotaBytes) {
-        return err(
-          new FileSystemError({
-            code: "QuotaExceeded",
-            message: `Tenant quota of ${fs.quotaBytes} bytes exceeded`,
-            retryable: false,
-          }),
+        return rejectUploaded(
+          "QuotaExceeded",
+          `Tenant quota of ${fs.quotaBytes} bytes exceeded`,
         );
       }
     }

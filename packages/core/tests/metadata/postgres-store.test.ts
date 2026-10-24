@@ -693,6 +693,127 @@ describe("createPostgresStore — tenant isolation", () => {
     expect(b.id).toBeTruthy();
     expect(a.id).not.toBe(b.id);
   });
+
+  it("does not move, delete, or purge another tenant that shares the folder path", async () => {
+    const folderA = await ok(
+      store.createNode(baseFolderInput({ tenantId: TENANT_A, name: "Documents" })),
+    );
+    await ok(
+      store.createNode(
+        baseFileInput({
+          tenantId: TENANT_A,
+          parentId: folderA.id,
+          name: "nomina.pdf",
+          s3Key: "a-key",
+        }),
+      ),
+    );
+    const folderB = await ok(
+      store.createNode(baseFolderInput({ tenantId: TENANT_B, name: "Documents" })),
+    );
+    const fileB = await ok(
+      store.createNode(
+        baseFileInput({
+          tenantId: TENANT_B,
+          parentId: folderB.id,
+          name: "nomina.pdf",
+          s3Key: "b-key",
+        }),
+      ),
+    );
+
+    await ok(
+      store.moveNode({
+        tenantId: TENANT_A,
+        id: folderA.id,
+        newParentId: null,
+        newName: "Pwned",
+      }),
+    );
+    const afterMove = await ok(store.getNode({ tenantId: TENANT_B, id: fileB.id }));
+    expect(afterMove?.path).toBe("/Documents/nomina.pdf");
+
+    await ok(store.deleteNode({ tenantId: TENANT_A, id: folderA.id, recursive: true }));
+    const afterDelete = await ok(store.getNode({ tenantId: TENANT_B, id: fileB.id }));
+    expect(afterDelete?.path).toBe("/Documents/nomina.pdf");
+
+    await ok(store.deleteNode({ tenantId: TENANT_B, id: folderB.id, recursive: true }));
+    await ok(store.purgeNode({ tenantId: TENANT_A, id: folderA.id }));
+    const trashB = await ok(store.listTrash({ tenantId: TENANT_B }));
+    expect(trashB.items.map((item) => item.id)).toEqual(
+      expect.arrayContaining([folderB.id, fileB.id]),
+    );
+  });
+
+  it("keeps a % or _ folder cascade inside its own subtree", async () => {
+    const wild = await ok(store.createNode(baseFolderInput({ tenantId: TENANT_A, name: "%" })));
+    await ok(
+      store.createNode(
+        baseFileInput({
+          tenantId: TENANT_A,
+          parentId: wild.id,
+          name: "inside.txt",
+          s3Key: "in",
+        }),
+      ),
+    );
+    const keep = await ok(
+      store.createNode(baseFolderInput({ tenantId: TENANT_A, name: "Facturas" })),
+    );
+    const invoice = await ok(
+      store.createNode(
+        baseFileInput({
+          tenantId: TENANT_A,
+          parentId: keep.id,
+          name: "2026.xlsx",
+          s3Key: "inv",
+        }),
+      ),
+    );
+    const underscore = await ok(
+      store.createNode(baseFolderInput({ tenantId: TENANT_A, name: "_" })),
+    );
+    const underFile = await ok(
+      store.createNode(
+        baseFileInput({
+          tenantId: TENANT_A,
+          parentId: underscore.id,
+          name: "under.txt",
+          s3Key: "under",
+        }),
+      ),
+    );
+    const other = await ok(store.createNode(baseFolderInput({ tenantId: TENANT_A, name: "X" })));
+    const important = await ok(
+      store.createNode(
+        baseFileInput({
+          tenantId: TENANT_A,
+          parentId: other.id,
+          name: "importante.txt",
+          s3Key: "imp",
+        }),
+      ),
+    );
+
+    await ok(
+      store.moveNode({
+        tenantId: TENANT_A,
+        id: underscore.id,
+        newParentId: null,
+        newName: "Kept",
+      }),
+    );
+    const underAfter = await ok(store.getNode({ tenantId: TENANT_A, id: underFile.id }));
+    expect(underAfter?.path).toBe("/Kept/under.txt");
+
+    await ok(store.deleteNode({ tenantId: TENANT_A, id: wild.id, recursive: true }));
+    await ok(store.deleteNode({ tenantId: TENANT_A, id: underscore.id, recursive: true }));
+
+    const invoiceAfter = await ok(store.getNode({ tenantId: TENANT_A, id: invoice.id }));
+    const importantAfter = await ok(store.getNode({ tenantId: TENANT_A, id: important.id }));
+    expect(invoiceAfter?.path).toBe("/Facturas/2026.xlsx");
+    expect(importantAfter?.path).toBe("/X/importante.txt");
+  });
 });
 });
 

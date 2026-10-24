@@ -7,10 +7,25 @@ import { signedContentDisposition } from "@/storage/content-disposition";
 import type { FileSystem } from "@/storage/filesystem";
 import type { MetadataStore } from "../../metadata/store";
 
+/** Above this, the app redirects instead of buffering the object. */
+const DEFAULT_MAX_SHARE_BYTES = 32 * 1024 * 1024;
+
 export interface CreateShareRouteHandlerOptions {
   readonly store: MetadataStore;
   readonly fs: FileSystem;
+  /** Bytes buffered through the app. Larger objects redirect to a 60s signed URL. */
+  readonly maxBytes?: number;
 }
+
+const shareHeaders = (): Headers => {
+  const headers = new Headers();
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Content-Security-Policy", "sandbox; default-src 'none'");
+  headers.set("Cross-Origin-Resource-Policy", "same-origin");
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("Referrer-Policy", "no-referrer");
+  return headers;
+};
 
 const tokenFromRequest = (req: Request): string | null => {
   const url = new URL(req.url);
@@ -37,7 +52,7 @@ export const createShareRouteHandler = (
     const resolved = await opts.store.resolveShare({ token });
     if (!resolved.ok) {
       return Response.json(
-        { ok: false, error: { code: resolved.error.code, message: resolved.error.message } },
+        { ok: false, error: { code: "InternalError", message: "Share lookup failed" } },
         { status: 500 },
       );
     }
@@ -50,32 +65,56 @@ export const createShareRouteHandler = (
     }
 
     const adapter = opts.fs.forTenant(node.tenantId).adapter;
-    const rangeHeader = req.headers.get("range") ?? undefined;
+    const download = new URL(req.url).searchParams.get("download") === "1";
+    const key = asS3Key(node.s3Key);
+    const st = await adapter.stat({ key });
+    if (!st.ok) {
+      return Response.json(
+        { ok: false, error: { code: "NotFound", message: "Share not found" } },
+        { status: 404 },
+      );
+    }
+    const maxBytes = opts.maxBytes ?? DEFAULT_MAX_SHARE_BYTES;
+    if (st.value.size > maxBytes) {
+      const signed = await adapter.createPresignedDownloadUrl({
+        key,
+        expiresIn: 60,
+        disposition: download ? "attachment" : "inline",
+        contentType: st.value.contentType || node.mimeType,
+      });
+      if (!signed.ok) {
+        return Response.json(
+          { ok: false, error: { code: "InternalError", message: "Share failed" } },
+          { status: 500 },
+        );
+      }
+      const headers = shareHeaders();
+      headers.set("Location", signed.value.url);
+      return new Response(null, { status: 302, headers });
+    }
+
     const read = await adapter.read({
-      key: asS3Key(node.s3Key),
-      range: rangeHeader ?? undefined,
+      key,
+      range: req.headers.get("range") ?? undefined,
     });
     if (!read.ok) {
       return Response.json(
-        { ok: false, error: { code: read.error.code, message: read.error.message } },
+        { ok: false, error: { code: "NotFound", message: "Share not found" } },
         { status: 404 },
       );
     }
 
-    const download = new URL(req.url).searchParams.get("download") === "1";
-    const headers = new Headers();
-    const mime = node.mimeType || read.value.contentType || "application/octet-stream";
+    const headers = shareHeaders();
+    const mime = st.value.contentType || node.mimeType || read.value.contentType || "application/octet-stream";
     headers.set("Content-Type", mime);
-    const disposition = download
-      ? "attachment"
-      : signedContentDisposition("inline", mime);
+    const disposition = download ? "attachment" : signedContentDisposition("inline", mime);
     headers.set(
       "Content-Disposition",
       `${disposition}; filename*=UTF-8''${encodeURIComponent(node.name)}`,
     );
-    headers.set("Cache-Control", "private, no-store");
-    headers.set("Content-Length", String(read.value.body.byteLength));
+    const bytes = Uint8Array.from(read.value.body);
+    headers.set("Content-Length", String(bytes.byteLength));
 
-    return new Response(Buffer.from(read.value.body), { status: 200, headers });
+    return new Response(bytes.buffer, { status: 200, headers });
   };
 };

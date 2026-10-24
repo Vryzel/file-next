@@ -470,30 +470,31 @@ const buildInner = (
   const stmtUpdateSelfMove = db.prepare(`
     UPDATE nodes
     SET parent_id = ?, name = ?, path = ?, updated_at = ?
-    WHERE id = ?
+    WHERE id = ? AND tenant_id = ?
   `);
 
   // Prefix-only replace: SUBSTR strips the leading oldPath and
   // we prepend newPath. Avoids accidentally rewriting nested
   // segments that happen to share the moved name (e.g. moving
   // "/foo" to "/bar" must turn "/foo/sub/foo" into "/bar/sub/foo",
-  // not "/bar/sub/bar").
+  // not "/bar/sub/bar"). LENGTH uses the raw path; LIKE uses the
+  // escaped path so a folder named "%" or "_" cannot widen the match.
   const stmtCascadeDescendants = db.prepare(`
     UPDATE nodes
     SET path = ? || SUBSTR(path, LENGTH(?) + 1), updated_at = ?
-    WHERE path LIKE ? || '/%'
+    WHERE tenant_id = ? AND path LIKE ? || '/%' ESCAPE '\\'
   `);
 
   const stmtTombstone = db.prepare(`
     UPDATE nodes
     SET deleted_at = ?, updated_at = ?
-    WHERE id = ?
+    WHERE id = ? AND tenant_id = ?
   `);
 
   const stmtTombstoneSubtree = db.prepare(`
     UPDATE nodes
     SET deleted_at = ?, updated_at = ?
-    WHERE (id = ? OR path LIKE ? || '/%')
+    WHERE tenant_id = ? AND (id = ? OR path LIKE ? || '/%' ESCAPE '\\')
       AND deleted_at IS NULL
   `);
 
@@ -525,7 +526,7 @@ const buildInner = (
     WHERE nodes_fts MATCH ?
       AND n.tenant_id = ?
       AND n.deleted_at IS NULL
-      AND (n.id = ? OR n.path LIKE ? || '/%')
+      AND (n.id = ? OR n.path LIKE ? || '/%' ESCAPE '\\')
     ORDER BY bm25(nodes_fts)
     LIMIT ?
   `);
@@ -653,7 +654,7 @@ const buildInner = (
         return err(
           new FileSystemError({
             code: "InternalError",
-            message: `createNode failed: ${(e as Error).message}`,
+            message: "createNode failed",
             retryable: false,
           }),
         );
@@ -772,14 +773,16 @@ const buildInner = (
             newPath,
             nowIso(),
             input.id,
+            input.tenantId,
           );
           if (current.path !== newPath) {
-            // Params: newPath, oldPath, now, oldPath (for LIKE).
+            // LENGTH uses the raw path. LIKE uses the escaped path.
             stmtCascadeDescendants.run(
               newPath,
               current.path,
               nowIso(),
-              current.path,
+              input.tenantId,
+              escapeLike(current.path),
             );
           }
         });
@@ -797,7 +800,7 @@ const buildInner = (
         return err(
           new FileSystemError({
             code: "InternalError",
-            message: `moveNode failed: ${(e as Error).message}`,
+            message: "moveNode failed",
             retryable: false,
           }),
         );
@@ -841,9 +844,9 @@ const buildInner = (
 
       const now = nowIso();
       if (input.recursive || node.kind === "file") {
-        stmtTombstoneSubtree.run(now, now, input.id, node.path);
+        stmtTombstoneSubtree.run(now, now, input.tenantId, input.id, escapeLike(node.path));
       } else {
-        stmtTombstone.run(now, now, input.id);
+        stmtTombstone.run(now, now, input.id, input.tenantId);
       }
       return ok(undefined);
     },
@@ -866,21 +869,21 @@ const buildInner = (
           }),
         );
       }
-      const like = `${node.path}/%`;
+      const like = `${escapeLike(node.path)}/%`;
       const files = db
         .prepare(
           `SELECT s3_key FROM nodes
            WHERE tenant_id = ? AND deleted_at IS NOT NULL AND kind = 'file' AND s3_key != ''
-             AND (id = ? OR path LIKE ?)`,
+             AND (id = ? OR path LIKE ? ESCAPE '\\')`,
         )
         .all(input.tenantId, input.id, like) as Array<{ s3_key: string }>;
       db.prepare(
         `DELETE FROM shares WHERE tenant_id = ? AND node_id IN (
-           SELECT id FROM nodes WHERE tenant_id = ? AND deleted_at IS NOT NULL AND (id = ? OR path LIKE ?)
+           SELECT id FROM nodes WHERE tenant_id = ? AND deleted_at IS NOT NULL AND (id = ? OR path LIKE ? ESCAPE '\\')
          )`,
       ).run(input.tenantId, input.tenantId, input.id, like);
       db.prepare(
-        `DELETE FROM nodes WHERE tenant_id = ? AND deleted_at IS NOT NULL AND (id = ? OR path LIKE ?)`,
+        `DELETE FROM nodes WHERE tenant_id = ? AND deleted_at IS NOT NULL AND (id = ? OR path LIKE ? ESCAPE '\\')`,
       ).run(input.tenantId, input.id, like);
       return ok({ s3Keys: files.map((row) => row.s3_key) });
     },
@@ -945,7 +948,7 @@ const buildInner = (
               ftsQuery,
               input.tenantId,
               input.parentId,
-              parent.path,
+              escapeLike(parent.path),
               limit,
             ) as ReadonlyArray<NodeRow>;
           }

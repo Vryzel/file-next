@@ -40,9 +40,15 @@ export const createPresignedUploadUrl = async (
       Bucket: config.bucket,
       Key: input.key,
       ContentType: input.contentType,
+      ContentLength: input.contentLength,
     });
     const url = await getSignedUrl(client, cmd, { expiresIn: input.expiresIn ?? 900 });
-    return ok({ url, method: "PUT" });
+    const requiredHeaders: Record<string, string> = {};
+    if (input.contentType) requiredHeaders["Content-Type"] = input.contentType;
+    if (input.contentLength != null) {
+      requiredHeaders["Content-Length"] = String(input.contentLength);
+    }
+    return ok({ url, method: "PUT", requiredHeaders });
   } catch (e) {
     return err(fromAws(e));
   }

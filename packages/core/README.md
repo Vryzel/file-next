@@ -169,7 +169,7 @@ import { createShareRouteHandler } from "@vryzel/file-next/server";
 export const GET = createShareRouteHandler({ store, fs });
 ```
 
-The handler streams the object through Next.js. Folders cannot be shared this way. Optional `sharePathPrefix` on `createServerActions` (default `/api/share`).
+The handler streams objects up to 32MB through Next.js and redirects larger ones to a 60-second signed URL. Folders cannot be shared this way. Optional `sharePathPrefix` on `createServerActions` (default `/api/share`).
 
 ### 8. Route handlers (upload / download)
 
@@ -180,6 +180,7 @@ import { getFileSystem } from "@vryzel/file-next";
 
 export const PUT = createUploadRouteHandler({
   fs: getFileSystem(),
+  getAuth: async () => session ?? null,
   maxBytes: 25 * 1024 * 1024,
   allowedContentTypes: ["image/*", "application/pdf"],
 });

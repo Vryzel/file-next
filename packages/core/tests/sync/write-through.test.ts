@@ -388,4 +388,23 @@ describe("duplicate display names", () => {
     expect(second.value.id).toBe("confirm-hello-2");
     expect(second.value.s3Key).toBe("confirm-hello-2");
   });
+
+  it("confirmUpload deletes the object when stat size exceeds the quota", async () => {
+    s3Mock.on(HeadObjectCommand).resolves({
+      ContentLength: 10,
+      ContentType: "text/plain",
+    });
+    s3Mock.on(DeleteObjectCommand).resolves({});
+    const capped = createWriteThrough(createFileSystem(config, { quotaBytes: 1 }), store);
+    const r = await capped.confirmUpload({
+      tenantId: TENANT_A,
+      id: "too-big",
+      parentId: null,
+      name: "big.bin",
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error.code).toBe("QuotaExceeded");
+    expect(s3Mock.commandCalls(DeleteObjectCommand).length).toBeGreaterThan(0);
+  });
 });

@@ -44,6 +44,19 @@ describe("T-018a: createPresignedUploadUrl", () => {
     expect(result.value.url).toMatch(/X-Amz-Signature=/);
   });
 
+  it("binds Content-Length when contentLength is set", async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    const result = await createPresignedUploadUrl(client, config, {
+      key: asS3Key("uploads/big.bin"),
+      contentType: "application/octet-stream",
+      contentLength: 32,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.requiredHeaders?.["Content-Length"]).toBe("32");
+    expect(result.value.url.toLowerCase()).toContain("content-length");
+  });
+
   it("default expiresIn is 15 minutes (900) when omitted", async () => {
     s3Mock.on(PutObjectCommand).resolves({});
     const result = await createPresignedUploadUrl(client, config, {

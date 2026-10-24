@@ -126,6 +126,11 @@ export interface PresignedUploadInput {
   contentType?: string;
   /** Expiry in seconds. Providers enforce a max (e.g. 7 days for S3). */
   expiresIn?: number;
+  /**
+   * When set, the signature binds `Content-Length` to this value.
+   * A PUT with any other length is rejected by the provider.
+   */
+  contentLength?: number;
 }
 
 export interface PresignedDownloadInput {
