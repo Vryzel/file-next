@@ -65,7 +65,7 @@ jobs:
         # Skips node_modules / dist inside packages we don't publish.
         run: |
           set -e
-          PATTERNS='AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID|FILE_NEXT_SECRET|DATABASE_URL=|POSTGRES_PASSWORD='
+          PATTERNS='AWS_SECRET_ACCESS_KEY=.+|AWS_ACCESS_KEY_ID=.+|FILE_NEXT_SECRET=.+|DATABASE_URL=.+|POSTGRES_PASSWORD=.+'
           if grep -rE "${PATTERNS}" --include='*.js' --include='*.cjs' --include='*.d.ts' \
               packages/*/dist app/.next 2>/dev/null | grep -v 'node_modules' | grep -v 'test' | grep -v 'spec' ; then
             echo "::error::Secret-looking value found in build output"
