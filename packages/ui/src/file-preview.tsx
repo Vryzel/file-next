@@ -141,6 +141,8 @@ export function FilePreviewDialog({
           <iframe
             src={src}
             title={file.name}
+            sandbox=""
+            referrerPolicy="no-referrer"
             className="h-full w-full max-w-5xl bg-white"
             onClick={stop}
           />

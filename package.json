@@ -22,7 +22,7 @@
     "publish": "pnpm --filter \"./packages/*\" publish --no-git-checks"
   },
   "peerDependencies": {
-    "next": ">=14.2.0",
+    "next": ">=15.5.28",
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0",
     "tailwindcss": ">=3.4.0"
