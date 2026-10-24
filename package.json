@@ -40,7 +40,7 @@
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
-    "@radix-ui/react-alert-dialog": "^1.1.17",
+    "@radix-ui/react-alert-dialog": "^1.2.1",
     "@radix-ui/react-context-menu": "^2.4.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
