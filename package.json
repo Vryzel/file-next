@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.17",
-    "@radix-ui/react-context-menu": "^2.3.1",
+    "@radix-ui/react-context-menu": "^2.4.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@testing-library/user-event": "^14.6.1",
