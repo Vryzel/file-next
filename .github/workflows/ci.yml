@@ -45,7 +45,7 @@ jobs:
       - name: Lint (shellcheck on .sh scripts)
         run: |
           if command -v shellcheck >/dev/null 2>&1; then
-            find . -name "*.sh" -not -path "./node_modules/*" -print0 | xargs -0 shellcheck
+            find . -name "*.sh" -not -path "./node_modules/*" -print0 | xargs -0 -r shellcheck
           else
             echo "shellcheck not installed; skipping"
           fi
