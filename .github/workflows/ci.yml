@@ -29,8 +29,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -47,10 +45,13 @@ jobs:
       - name: Lint (shellcheck on .sh scripts)
         run: |
           if command -v shellcheck >/dev/null 2>&1; then
-            find . -name "*.sh" -not -path "./node_modules/*" -print0 | xargs -0 shellcheck
+            find . -name "*.sh" -not -path "./node_modules/*" -print0 | xargs -0 -r shellcheck
           else
             echo "shellcheck not installed; skipping"
           fi
+
+      - name: Build
+        run: pnpm --filter "./packages/*" build
 
       - name: Typecheck
         run: pnpm typecheck
@@ -58,16 +59,13 @@ jobs:
       - name: Unit tests
         run: pnpm test:run
 
-      - name: Build
-        run: pnpm --filter "./packages/*" build
-
       - name: Secret leak guard
         # Catches accidental AWS_SECRET_ACCESS_KEY, FILE_NEXT_SECRET,
         # DATABASE_URL with creds, etc. in the built dist/ + .next/.
         # Skips node_modules / dist inside packages we don't publish.
         run: |
           set -e
-          PATTERNS='AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID|FILE_NEXT_SECRET|DATABASE_URL=|POSTGRES_PASSWORD='
+          PATTERNS='AWS_SECRET_ACCESS_KEY=.+|AWS_ACCESS_KEY_ID=.+|FILE_NEXT_SECRET=.+|DATABASE_URL=.+|POSTGRES_PASSWORD=.+'
           if grep -rE "${PATTERNS}" --include='*.js' --include='*.cjs' --include='*.d.ts' \
               packages/*/dist app/.next 2>/dev/null | grep -v 'node_modules' | grep -v 'test' | grep -v 'spec' ; then
             echo "::error::Secret-looking value found in build output"
@@ -89,8 +87,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

@@ -24,7 +24,10 @@ const config: FileSystemConfig = {
   forcePathStyle: false,
 };
 
-const client = new S3Client({ region: "us-east-1" });
+const client = new S3Client({
+  region: "us-east-1",
+  credentials: { accessKeyId: "AKIA-TEST", secretAccessKey: "test-secret" },
+});
 
 describe("T-018a: createPresignedUploadUrl", () => {
   beforeEach(() => s3Mock.reset());

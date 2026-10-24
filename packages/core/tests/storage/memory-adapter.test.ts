@@ -220,11 +220,13 @@ describe("createMemoryAdapter — custom options", () => {
     expect(stat.ok && stat.value.contentType).toBe("application/x-foo");
   });
 
-  it("disables the 5 GB cap when enforceSizeLimit=false", async () => {
-    const a = createMemoryAdapter({ enforceSizeLimit: false });
-    // Fake 6 GB body — would normally be rejected.
-    const fakeBody = new Uint8Array(6_000_000_000);
-    const result = await a.write({ key: KEY, body: fakeBody });
+  it("disables the size cap when enforceSizeLimit=false", async () => {
+    const capped = createMemoryAdapter({ maxSinglePutSize: 1 });
+    const rejected = await capped.write({ key: KEY, body: new Uint8Array([1, 2]) });
+    expect(rejected.ok).toBe(false);
+
+    const open = createMemoryAdapter({ enforceSizeLimit: false, maxSinglePutSize: 1 });
+    const result = await open.write({ key: KEY, body: new Uint8Array([1, 2]) });
     expect(result.ok).toBe(true);
   });
 });

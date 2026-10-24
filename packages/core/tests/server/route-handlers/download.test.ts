@@ -26,6 +26,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createDownloadRouteHandler } from "@/server/route-handlers/download";
 import { createPresignedDownloadUrl } from "@/storage/s3-adapter/presigned";
 import { FileSystemError } from "@/errors";
+import { asTenantId, asUserId } from "@/types/branded";
 import type { FileSystem } from "@/storage/filesystem";
 import type { FileSystemConfig } from "@/storage/config";
 import type { PresignedDownloadInput } from "@/storage/adapter";
@@ -110,7 +111,10 @@ describe("T-050: createDownloadRouteHandler — auth", () => {
     const handler = createDownloadRouteHandler({
       fs: mem,
       store,
-      getAuth: async () => ({ tenantId: "demo", userId: "user-1" }),
+      getAuth: async (_req: Request) => ({
+        tenantId: asTenantId("demo"),
+        userId: asUserId("user-1"),
+      }),
     });
     const res = await handler(makeDownloadRequest("missing-key"));
     expect(res.status).toBe(404);
