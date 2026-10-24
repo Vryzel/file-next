@@ -39,7 +39,7 @@
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
-    "@tanstack/react-virtual": "^3.14.13",
+    "@tanstack/react-virtual": "^3.14.21",
     "clsx": "^2.1.1",
     "lucide-react": "^0.460.0",
     "tailwind-merge": "^2.5.4"
