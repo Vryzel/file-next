@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Copy, Download, Link2, ListChecks, RotateCcw, X } from "lucide-react";
+import { Copy, Download, Link2, ListChecks, ListX, RotateCcw, X } from "lucide-react";
 import { cn } from "./cn";
 import { swallowClickThrough } from "./swallow-click-through";
 import type { FileNode } from "./types";
@@ -202,6 +202,18 @@ function SelectionActions({
             </button>
           </>
         )}
+        <button
+          type="button"
+          className={btn}
+          onClick={(event) => {
+            event.stopPropagation();
+            swallowClickThrough();
+            onClear();
+          }}
+        >
+          <ListX aria-hidden="true" className="size-3.5" />
+          {labels.clearSelection}
+        </button>
       </div>
     </div>
   );

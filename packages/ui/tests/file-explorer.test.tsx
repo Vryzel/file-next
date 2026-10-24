@@ -244,4 +244,40 @@ describe("FileExplorer", () => {
     expect(rename).toBeDisabled();
     expect(trash).toBeDisabled();
   });
+
+  it("deselects every file from the multi-selection actions", async () => {
+    stubBox(360);
+    const user = userEvent.setup();
+    render(
+      <FileExplorer
+        tenantId="demo"
+        parentId={null}
+        listFiles={async () => ({
+          ok: true as const,
+          value: { items: [file("alpha.txt"), file("beta.txt")] },
+        })}
+        actions={actions}
+      />,
+    );
+    await user.click(await screen.findByText("alpha.txt"));
+    await user.click(screen.getByText("beta.txt"));
+    if (!screen.queryByRole("button", { name: "Move to trash" })) {
+      await user.click(screen.getByRole("button", { name: /^\d+ selected$/ }));
+    }
+    expect(screen.getByRole("button", { name: "Move to trash" })).toBeEnabled();
+    const clear = screen
+      .getAllByRole("button", { name: "Clear selection" })
+      .find((button) => button.textContent?.includes("Clear selection"));
+    expect(clear).toBeTruthy();
+    await user.click(clear!);
+    expect(screen.queryByRole("button", { name: "Move to trash" })).not.toBeInTheDocument();
+    expect(screen.getByText("alpha.txt").closest("[aria-selected]")).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    expect(screen.getByText("beta.txt").closest("[aria-selected]")).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+  });
 });

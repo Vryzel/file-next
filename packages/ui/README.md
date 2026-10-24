@@ -73,7 +73,7 @@ What you get with `FileExplorer`:
 - List / grid, sort, persisted view (`persistViewKey`)
 - Search, trash, upload (multi-file + OS drop)
 - New folder / rename in place (Enter or blur saves, Escape cancels)
-- Multi-select, shift-click, ⌘A, copy/paste, drag onto folders
+- Multi-select, shift-click, ⌘A, deselect all from the selection toast, copy/paste, drag onto folders
 - Pagination (`limit` 50 + Load more)
 - Quota footer, selection toast, upload queue
 
