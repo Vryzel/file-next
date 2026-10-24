@@ -9,6 +9,10 @@ import type { AuthContext } from "../auth/with-auth";
 import type { MetadataStore, FileNode } from "../metadata/store";
 import type { FileSystem } from "../storage/filesystem";
 import type { createWriteThrough } from "../sync/write-through";
+import {
+  isDeniedUploadType,
+  matchesAllowedContentType,
+} from "../storage/content-disposition";
 
 type CreateWriteThrough = ReturnType<typeof createWriteThrough>;
 
@@ -17,8 +21,8 @@ const PathSchema = z.string().nullable();
 
 export const ListFilesInputSchema = z.object({
   parentId: PathSchema,
-  limit: z.number().int().positive().optional(),
-  cursor: z.string().optional(),
+  limit: z.number().int().positive().max(500).optional(),
+  cursor: z.string().max(256).optional(),
 });
 
 export const DeleteFileInputSchema = z.object({
@@ -40,7 +44,7 @@ export const CopyFileInputSchema = z.object({
 
 export const SetMetadataInputSchema = z.object({
   id: NodeIdSchema,
-  metadata: z.record(z.string()),
+  metadata: z.record(z.string(), z.string()),
   replace: z.boolean().optional(),
 });
 
@@ -65,9 +69,14 @@ export const ConfirmUploadInputSchema = z.object({
 });
 
 export const SearchFilesInputSchema = z.object({
-  query: z.string(),
-  parentId: z.string().optional(),
-  limit: z.number().int().positive().optional(),
+  query: z.string().max(256),
+  parentId: z.string().max(256).optional(),
+  limit: z.number().int().positive().max(500).optional(),
+});
+
+export const ListTrashInputSchema = z.object({
+  limit: z.number().int().positive().max(500).optional(),
+  cursor: z.string().max(256).optional(),
 });
 
 export const RestoreNodeInputSchema = z.object({
@@ -86,7 +95,7 @@ export const RevokeShareInputSchema = z.object({
   token: z.string().min(1),
 });
 
-const zodErr = (message: string, parsed: z.SafeParseError<unknown>) =>
+const zodErr = (message: string, parsed: z.ZodSafeParseError<unknown>) =>
   err(
     new FileSystemError({
       code: "InternalError",
@@ -103,6 +112,10 @@ export interface ServerActionsDeps {
   readonly getAuth: () => AuthContext | Promise<AuthContext>;
   /** App path prefix for share links. Default `/api/share`. */
   readonly sharePathPrefix?: string;
+  /** Per-object cap for `prepareUpload`. Falls back to `fs.maxBytes`. */
+  readonly maxBytes?: number;
+  /** Literals (`image/png`) or wildcards (`image/*`). SVG is never allowed. */
+  readonly allowedContentTypes?: ReadonlyArray<string>;
 }
 
 export const createServerActions = (deps: ServerActionsDeps) => {
@@ -113,7 +126,7 @@ export const createServerActions = (deps: ServerActionsDeps) => {
     if (e instanceof FileSystemError) return e;
     return new FileSystemError({
       code,
-      message: `${message}: ${e instanceof Error ? e.message : String(e)}`,
+      message,
       retryable: true,
     });
   };
@@ -236,6 +249,31 @@ export const createServerActions = (deps: ServerActionsDeps) => {
   ): Promise<Result<PrepareUploadOutput, FileSystemError>> => {
     const parsed = PrepareUploadInputSchema.safeParse(input);
     if (!parsed.success) return zodErr("Invalid prepareUpload input", parsed);
+    const maxBytes = deps.maxBytes ?? fs.maxBytes;
+    if (maxBytes != null && parsed.data.contentLength > maxBytes) {
+      return err(
+        new FileSystemError({
+          code: "PayloadTooLarge",
+          message: `contentLength exceeds maxBytes ${maxBytes}`,
+          retryable: false,
+        }),
+      );
+    }
+    if (
+      isDeniedUploadType(parsed.data.contentType) ||
+      (deps.allowedContentTypes != null &&
+        !deps.allowedContentTypes.some((pattern) =>
+          matchesAllowedContentType(pattern, parsed.data.contentType),
+        ))
+    ) {
+      return err(
+        new FileSystemError({
+          code: "UnsupportedMediaType",
+          message: "Content type is not allowed",
+          retryable: false,
+        }),
+      );
+    }
     try {
       const auth = await authTenant();
       const id =
@@ -245,6 +283,7 @@ export const createServerActions = (deps: ServerActionsDeps) => {
       const signed = await fs.forTenant(auth.tenantId).adapter.createPresignedUploadUrl({
         key: asS3Key(id),
         contentType: parsed.data.contentType,
+        contentLength: parsed.data.contentLength,
         expiresIn: 900,
       });
       if (!signed.ok) return signed;
@@ -301,14 +340,16 @@ export const createServerActions = (deps: ServerActionsDeps) => {
   };
 
   const listTrash = async (
-    input: { limit?: number; cursor?: string } = {},
+    input: z.infer<typeof ListTrashInputSchema> = {},
   ): Promise<Result<ListFilesOutput, FileSystemError>> => {
+    const parsed = ListTrashInputSchema.safeParse(input);
+    if (!parsed.success) return zodErr("Invalid listTrash input", parsed);
     try {
       const auth = await authTenant();
       return store.listTrash({
         tenantId: asTenantId(auth.tenantId),
-        limit: input.limit,
-        cursor: input.cursor,
+        limit: parsed.data.limit,
+        cursor: parsed.data.cursor,
       });
     } catch (e) {
       return err(wrap(e, "InternalError", "listTrash failed"));

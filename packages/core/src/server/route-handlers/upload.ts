@@ -24,34 +24,32 @@
  * the developer should see the error at server startup, not on
  * the first user request.
  */
+import { z } from "zod";
 import { FileSystemError } from "@/errors";
 import { asS3Key } from "@/types/branded";
 import type { FileSystem } from "@/storage/filesystem";
 import type { AuthContext } from "../../auth/with-auth";
+import {
+  isDeniedUploadType,
+  matchesAllowedContentType,
+} from "@/storage/content-disposition";
 
 /** S3 SigV4 presign hard cap. The SDK itself rejects anything longer. */
 const MAX_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
 /** Default 15 minutes — matches the adapter default and the AWS SDK default. */
 const DEFAULT_EXPIRES_IN_SECONDS = 900;
 
-/**
- * Convert a glob pattern (`image/*`) to a regex; convert a literal
- * (`image/png`) to an exact match. Both forms are common in
- * `allowedContentTypes` arrays.
- */
-const matchesContentType = (pattern: string, actual: string): boolean => {
-  if (pattern === actual) return true;
-  if (pattern.endsWith("/*")) {
-    const prefix = pattern.slice(0, -1); // "image/*" → "image/"
-    return actual.startsWith(prefix);
-  }
-  return false;
-};
+const UploadBody = z.object({
+  contentType: z.string().min(1).max(255),
+  contentLength: z.number().int().nonnegative(),
+});
 
 export interface CreateUploadRouteHandlerOptions {
   readonly fs: FileSystem;
-  /** Resolve the caller. 401 when it returns null. */
+  /** Resolve the caller. Required unless `unsafeNoAuth` is set. */
   readonly getAuth?: (req: Request) => Promise<AuthContext | null>;
+  /** Explicit opt-in for a handler that signs without a caller. */
+  readonly unsafeNoAuth?: boolean;
   /** Reject requests whose `contentLength` exceeds this. Omit for no cap. */
   readonly maxBytes?: number;
   /**
@@ -100,52 +98,14 @@ const assertExpiresIn = (expiresIn: number): void => {
 export const createUploadRouteHandler = (
   opts: CreateUploadRouteHandlerOptions,
 ): ((req: Request) => Promise<Response>) => {
+  if (!opts.getAuth && opts.unsafeNoAuth !== true) {
+    throw new Error("file-next: getAuth is required");
+  }
   const expiresIn = opts.expiresIn ?? DEFAULT_EXPIRES_IN_SECONDS;
   // Construction-time validation: fail-fast on misconfiguration.
   assertExpiresIn(expiresIn);
 
   return async (req: Request): Promise<Response> => {
-    let body: UploadRouteHandlerRequest;
-    try {
-      body = (await req.json()) as UploadRouteHandlerRequest;
-    } catch {
-      return Response.json(
-        { ok: false, error: { code: "InternalError", message: "Request body must be valid JSON" } },
-        { status: 400 },
-      );
-    }
-
-    // 1. maxBytes — reject BEFORE signing
-    if (typeof opts.maxBytes === "number" && body.contentLength > opts.maxBytes) {
-      return Response.json(
-        {
-          ok: false,
-          error: {
-            code: "PayloadTooLarge",
-            message: `contentLength ${body.contentLength} exceeds maxBytes ${opts.maxBytes}`,
-          },
-        },
-        { status: 413 },
-      );
-    }
-
-    // 2. allowedContentTypes — reject BEFORE signing
-    if (opts.allowedContentTypes && opts.allowedContentTypes.length > 0) {
-      const allowed = opts.allowedContentTypes.some((p) => matchesContentType(p, body.contentType));
-      if (!allowed) {
-        return Response.json(
-          {
-            ok: false,
-            error: {
-              code: "UnsupportedMediaType",
-              message: `contentType "${body.contentType}" is not in the allowed list`,
-            },
-          },
-          { status: 415 },
-        );
-      }
-    }
-
     let fs = opts.fs;
     if (opts.getAuth) {
       const auth = await opts.getAuth(req);
@@ -158,6 +118,57 @@ export const createUploadRouteHandler = (
       fs = opts.fs.forTenant(auth.tenantId);
     }
 
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch {
+      return Response.json(
+        { ok: false, error: { code: "InternalError", message: "Request body must be valid JSON" } },
+        { status: 400 },
+      );
+    }
+    const parsed = UploadBody.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json(
+        { ok: false, error: { code: "InternalError", message: "Invalid upload request" } },
+        { status: 400 },
+      );
+    }
+    const body = parsed.data;
+
+    if (typeof opts.maxBytes === "number" && body.contentLength > opts.maxBytes) {
+      return Response.json(
+        {
+          ok: false,
+          error: {
+            code: "PayloadTooLarge",
+            message: `contentLength exceeds maxBytes ${opts.maxBytes}`,
+          },
+        },
+        { status: 413 },
+      );
+    }
+
+    if (
+      isDeniedUploadType(body.contentType) ||
+      (opts.allowedContentTypes &&
+        opts.allowedContentTypes.length > 0 &&
+        !opts.allowedContentTypes.some((pattern) =>
+          matchesAllowedContentType(pattern, body.contentType),
+        ))
+    ) {
+      return Response.json(
+        {
+          ok: false,
+          error: {
+            code: "UnsupportedMediaType",
+            message: "Content type is not allowed",
+          },
+        },
+        { status: 415 },
+      );
+    }
+
     const id =
       typeof globalThis.crypto?.randomUUID === "function"
         ? globalThis.crypto.randomUUID()
@@ -165,11 +176,12 @@ export const createUploadRouteHandler = (
     const r = await fs.adapter.createPresignedUploadUrl({
       key: asS3Key(id),
       contentType: body.contentType,
+      contentLength: body.contentLength,
       expiresIn,
     });
     if (!r.ok) {
       return Response.json(
-        { ok: false, error: { code: r.error.code, message: r.error.message } },
+        { ok: false, error: { code: r.error.code, message: "Upload failed" } },
         { status: 500 },
       );
     }

@@ -470,11 +470,17 @@ export function createMemoryAdapter(
     // Fake URL — only resolvable by the in-memory adapter's
     // own test helper (not exposed in the public adapter).
     const expiresIn = input.expiresIn ?? 900;
+    const requiredHeaders: Record<string, string> = {};
+    if (input.contentType) requiredHeaders["Content-Type"] = input.contentType;
+    if (input.contentLength != null) {
+      requiredHeaders["Content-Length"] = String(input.contentLength);
+    }
     return {
       ok: true,
       value: {
         url: `in-memory://${bucket}/${input.key}?expiresIn=${expiresIn}`,
         method: "PUT",
+        requiredHeaders,
       },
     };
   };

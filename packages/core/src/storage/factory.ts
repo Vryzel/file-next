@@ -31,6 +31,7 @@ const assemble = (
     metadata: options?.store,
     tenantId,
     quotaBytes: options?.quotaBytes,
+    maxBytes: options?.maxBytes,
     forTenant,
   });
 
@@ -39,6 +40,7 @@ const assemble = (
     config,
     metadata: options?.store,
     quotaBytes: options?.quotaBytes,
+    maxBytes: options?.maxBytes,
     forTenant,
   };
 };

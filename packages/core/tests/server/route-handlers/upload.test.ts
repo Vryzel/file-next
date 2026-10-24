@@ -76,7 +76,7 @@ beforeEach(() => {
 describe("T-049: createUploadRouteHandler — request-time validation", () => {
   it("returns 413 PayloadTooLarge when contentLength exceeds maxBytes (no URL signed)", async () => {
     const fs = makeFs();
-    const handler = createUploadRouteHandler({ fs, maxBytes: 10_000_000 });
+    const handler = createUploadRouteHandler({ unsafeNoAuth: true, fs, maxBytes: 10_000_000 });
     const req = makeUploadRequest({ key: "uploads/big.bin", contentType: "image/png", contentLength: 20_000_000 });
     const res = await handler(req);
     expect(res.status).toBe(413);
@@ -89,7 +89,7 @@ describe("T-049: createUploadRouteHandler — request-time validation", () => {
 
   it("returns 415 UnsupportedMediaType when contentType is not in allowedContentTypes", async () => {
     const fs = makeFs();
-    const handler = createUploadRouteHandler({
+    const handler = createUploadRouteHandler({ unsafeNoAuth: true,
       fs,
       allowedContentTypes: ["image/png", "image/jpeg"],
     });
@@ -104,7 +104,7 @@ describe("T-049: createUploadRouteHandler — request-time validation", () => {
 
   it("supports wildcard content-type patterns (image/*)", async () => {
     const fs = makeFs();
-    const handler = createUploadRouteHandler({
+    const handler = createUploadRouteHandler({ unsafeNoAuth: true,
       fs,
       allowedContentTypes: ["image/*"],
     });
@@ -115,7 +115,7 @@ describe("T-049: createUploadRouteHandler — request-time validation", () => {
 
   it("happy path: returns 200 with { url, key, expiresAt }", async () => {
     const fs = makeFs();
-    const handler = createUploadRouteHandler({ fs });
+    const handler = createUploadRouteHandler({ unsafeNoAuth: true, fs });
     const before = Date.now();
     const req = makeUploadRequest({ key: "uploads/x.txt", contentType: "text/plain", contentLength: 1024 });
     const res = await handler(req);
@@ -132,7 +132,7 @@ describe("T-049: createUploadRouteHandler — request-time validation", () => {
 
   it("calls getSignedUrl with a PutObjectCommand targeting the right bucket + key + expiresIn", async () => {
     const fs = makeFs();
-    const handler = createUploadRouteHandler({ fs, expiresIn: 600 });
+    const handler = createUploadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 600 });
     const req = makeUploadRequest({ key: "uploads/photo.jpg", contentType: "image/jpeg", contentLength: 2048 });
     await handler(req);
     expect(vi.mocked(getSignedUrl)).toHaveBeenCalledTimes(1);
@@ -151,11 +151,11 @@ describe("T-049: createUploadRouteHandler — construction-time expiresIn cap", 
   it("throws FileSystemError SYNCHRONOUSLY when expiresIn > 7 days (S3 SigV4 limit)", () => {
     const fs = makeFs();
     expect(() =>
-      createUploadRouteHandler({ fs, expiresIn: 30 * 86400 }),
+      createUploadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 30 * 86400 }),
     ).toThrow(FileSystemError);
     // The catalog is closed at 11 codes; the specific reason is on cause.code.
     try {
-      createUploadRouteHandler({ fs, expiresIn: 30 * 86400 });
+      createUploadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 30 * 86400 });
     } catch (e) {
       expect(e).toBeInstanceOf(FileSystemError);
       const err = e as FileSystemError;
@@ -166,23 +166,52 @@ describe("T-049: createUploadRouteHandler — construction-time expiresIn cap", 
 
   it("throws when expiresIn is at the boundary (7d + 1 second)", () => {
     const fs = makeFs();
-    expect(() => createUploadRouteHandler({ fs, expiresIn: 7 * 86400 + 1 })).toThrow(FileSystemError);
+    expect(() => createUploadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 7 * 86400 + 1 })).toThrow(FileSystemError);
   });
 
   it("accepts expiresIn at exactly 7 days (S3 SigV4 cap)", () => {
     const fs = makeFs();
-    expect(() => createUploadRouteHandler({ fs, expiresIn: 7 * 86400 })).not.toThrow();
+    expect(() => createUploadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 7 * 86400 })).not.toThrow();
   });
 
   it("throws when expiresIn is 0 or negative", () => {
     const fs = makeFs();
-    expect(() => createUploadRouteHandler({ fs, expiresIn: 0 })).toThrow(FileSystemError);
-    expect(() => createUploadRouteHandler({ fs, expiresIn: -1 })).toThrow(FileSystemError);
+    expect(() => createUploadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 0 })).toThrow(FileSystemError);
+    expect(() => createUploadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: -1 })).toThrow(FileSystemError);
+  });
+
+  it("throws when getAuth is omitted", () => {
+    const fs = makeFs();
+    expect(() => createUploadRouteHandler({ fs })).toThrow(/getAuth is required/);
+  });
+
+  it("returns 400 when contentLength is omitted and does not sign", async () => {
+    const fs = makeFs();
+    const handler = createUploadRouteHandler({ unsafeNoAuth: true, fs, maxBytes: 10 });
+    const res = await handler(
+      makeUploadRequest({ key: "uploads/x.txt", contentType: "text/plain" }),
+    );
+    expect(res.status).toBe(400);
+    expect(vi.mocked(getSignedUrl)).not.toHaveBeenCalled();
+  });
+
+  it("rejects image/svg+xml even when image/* is allowed", async () => {
+    const fs = makeFs();
+    const handler = createUploadRouteHandler({
+      unsafeNoAuth: true,
+      fs,
+      allowedContentTypes: ["image/*"],
+    });
+    const res = await handler(
+      makeUploadRequest({ key: "uploads/x.svg", contentType: "image/svg+xml", contentLength: 10 }),
+    );
+    expect(res.status).toBe(415);
+    expect(vi.mocked(getSignedUrl)).not.toHaveBeenCalled();
   });
 
   it("defaults expiresIn to 900s when omitted", async () => {
     const fs = makeFs();
-    const handler = createUploadRouteHandler({ fs });
+    const handler = createUploadRouteHandler({ unsafeNoAuth: true, fs });
     const req = makeUploadRequest({ key: "uploads/x.txt", contentType: "text/plain", contentLength: 1024 });
     await handler(req);
     const optsArg = vi.mocked(getSignedUrl).mock.calls[0]![2] as { expiresIn: number };
