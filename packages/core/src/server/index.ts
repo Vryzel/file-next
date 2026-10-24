@@ -18,6 +18,7 @@
  *   import { getFileSystem } from "@vryzel/file-next";
  *   export const POST = createUploadRouteHandler({
  *     fs: getFileSystem(),
+ *     getAuth: async () => session ?? null,
  *     maxBytes: 25 * 1024 * 1024,
  *     allowedContentTypes: ["image/*"],
  *   });
@@ -39,6 +40,7 @@ export {
   PrepareUploadInputSchema,
   ConfirmUploadInputSchema,
   SearchFilesInputSchema,
+  ListTrashInputSchema,
   RestoreNodeInputSchema,
   CreateShareInputSchema,
   ResolveShareInputSchema,

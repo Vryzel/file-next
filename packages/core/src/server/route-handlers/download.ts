@@ -17,9 +17,10 @@
  * handler fails fast at server startup.
  */
 import { FileSystemError } from "@/errors";
-import { asS3Key } from "@/types/branded";
+import { asS3Key, asTenantId } from "@/types/branded";
 import type { FileSystem } from "@/storage/filesystem";
 import type { AuthContext } from "../../auth/with-auth";
+import type { MetadataStore } from "../../metadata/store";
 
 /** S3 SigV4 presign hard cap. The SDK itself rejects anything longer. */
 const MAX_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
@@ -28,7 +29,12 @@ const DEFAULT_EXPIRES_IN_SECONDS = 900;
 
 export interface CreateDownloadRouteHandlerOptions {
   readonly fs: FileSystem;
+  /** Required unless `unsafeNoAuth` is set. */
   readonly getAuth?: (req: Request) => Promise<AuthContext | null>;
+  /** Explicit opt-in for a handler that signs without a caller. */
+  readonly unsafeNoAuth?: boolean;
+  /** Required with `getAuth`. Signs only a live node key for that tenant. */
+  readonly store?: MetadataStore;
   /** Presigned URL lifetime in seconds. Default 900, max 7d (S3 SigV4). */
   readonly expiresIn?: number;
 }
@@ -66,10 +72,30 @@ const assertExpiresIn = (expiresIn: number): void => {
 export const createDownloadRouteHandler = (
   opts: CreateDownloadRouteHandlerOptions,
 ): ((req: Request) => Promise<Response>) => {
+  if (!opts.getAuth && opts.unsafeNoAuth !== true) {
+    throw new Error("file-next: getAuth is required");
+  }
+  if (opts.getAuth && !opts.store) {
+    throw new Error("file-next: store is required when getAuth is set");
+  }
   const expiresIn = opts.expiresIn ?? DEFAULT_EXPIRES_IN_SECONDS;
   assertExpiresIn(expiresIn);
 
   return async (req: Request): Promise<Response> => {
+    let fs = opts.fs;
+    let tenantId: string | undefined;
+    if (opts.getAuth) {
+      const auth = await opts.getAuth(req);
+      if (!auth) {
+        return Response.json(
+          { ok: false, error: { code: "Unauthorized", message: "Not authenticated" } },
+          { status: 401 },
+        );
+      }
+      tenantId = auth.tenantId;
+      fs = opts.fs.forTenant(auth.tenantId);
+    }
+
     const url = new URL(req.url);
     const key = url.searchParams.get("key");
     if (!key) {
@@ -79,16 +105,17 @@ export const createDownloadRouteHandler = (
       );
     }
 
-    let fs = opts.fs;
-    if (opts.getAuth) {
-      const auth = await opts.getAuth(req);
-      if (!auth) {
+    if (opts.store && tenantId) {
+      const node = await opts.store.findByS3Key({
+        tenantId: asTenantId(tenantId),
+        s3Key: key,
+      });
+      if (!node.ok || !node.value) {
         return Response.json(
-          { ok: false, error: { code: "Unauthorized", message: "Not authenticated" } },
-          { status: 401 },
+          { ok: false, error: { code: "NotFound", message: "Not found" } },
+          { status: 404 },
         );
       }
-      fs = opts.fs.forTenant(auth.tenantId);
     }
 
     const r = await fs.adapter.createPresignedDownloadUrl({
@@ -97,7 +124,7 @@ export const createDownloadRouteHandler = (
     });
     if (!r.ok) {
       return Response.json(
-        { ok: false, error: { code: r.error.code, message: r.error.message } },
+        { ok: false, error: { code: r.error.code, message: "Download failed" } },
         { status: 500 },
       );
     }

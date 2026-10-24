@@ -69,7 +69,7 @@ beforeEach(() => {
 describe("T-050: createDownloadRouteHandler — happy path", () => {
   it("returns 200 with { url, expiresAt }", async () => {
     const fs = makeFs();
-    const handler = createDownloadRouteHandler({ fs });
+    const handler = createDownloadRouteHandler({ unsafeNoAuth: true, fs });
     const before = Date.now();
     const req = makeDownloadRequest("uploads/x.txt");
     const res = await handler(req);
@@ -84,7 +84,7 @@ describe("T-050: createDownloadRouteHandler — happy path", () => {
 
   it("calls getSignedUrl with a GetObjectCommand for the right key", async () => {
     const fs = makeFs();
-    const handler = createDownloadRouteHandler({ fs, expiresIn: 3600 });
+    const handler = createDownloadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 3600 });
     const req = makeDownloadRequest("uploads/report.pdf");
     await handler(req);
     expect(vi.mocked(getSignedUrl)).toHaveBeenCalledTimes(1);
@@ -96,12 +96,33 @@ describe("T-050: createDownloadRouteHandler — happy path", () => {
   });
 });
 
+describe("T-050: createDownloadRouteHandler — auth", () => {
+  it("throws when getAuth is omitted", () => {
+    const fs = makeFs();
+    expect(() => createDownloadRouteHandler({ fs })).toThrow(/getAuth is required/);
+  });
+
+  it("does not sign a key that is not a live node of the tenant", async () => {
+    const { createMemoryStore } = await import("@/metadata/memory-store");
+    const { createMemoryFileSystem } = await import("@/storage/factory");
+    const store = createMemoryStore();
+    const mem = createMemoryFileSystem({ store });
+    const handler = createDownloadRouteHandler({
+      fs: mem,
+      store,
+      getAuth: async () => ({ tenantId: "demo", userId: "user-1" }),
+    });
+    const res = await handler(makeDownloadRequest("missing-key"));
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("T-050: createDownloadRouteHandler — construction-time expiresIn cap", () => {
   it("throws FileSystemError SYNCHRONOUSLY when expiresIn > 7 days (S3 SigV4 limit)", () => {
     const fs = makeFs();
-    expect(() => createDownloadRouteHandler({ fs, expiresIn: 8 * 86400 })).toThrow(FileSystemError);
+    expect(() => createDownloadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 8 * 86400 })).toThrow(FileSystemError);
     try {
-      createDownloadRouteHandler({ fs, expiresIn: 8 * 86400 });
+      createDownloadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 8 * 86400 });
     } catch (e) {
       expect(e).toBeInstanceOf(FileSystemError);
       const err = e as FileSystemError;
@@ -112,12 +133,12 @@ describe("T-050: createDownloadRouteHandler — construction-time expiresIn cap"
 
   it("accepts expiresIn at exactly 7 days (S3 SigV4 cap)", () => {
     const fs = makeFs();
-    expect(() => createDownloadRouteHandler({ fs, expiresIn: 7 * 86400 })).not.toThrow();
+    expect(() => createDownloadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 7 * 86400 })).not.toThrow();
   });
 
   it("throws when expiresIn is 0 or negative", () => {
     const fs = makeFs();
-    expect(() => createDownloadRouteHandler({ fs, expiresIn: 0 })).toThrow(FileSystemError);
-    expect(() => createDownloadRouteHandler({ fs, expiresIn: -1 })).toThrow(FileSystemError);
+    expect(() => createDownloadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: 0 })).toThrow(FileSystemError);
+    expect(() => createDownloadRouteHandler({ unsafeNoAuth: true, fs, expiresIn: -1 })).toThrow(FileSystemError);
   });
 });
