@@ -120,11 +120,8 @@ function PdfFrame({
           src={frameSrc}
           title={title}
           referrerPolicy="no-referrer"
-          className={
-            painted
-              ? "h-full w-full bg-white"
-              : "absolute h-px w-px opacity-0"
-          }
+          // A 1px hidden frame makes Chrome download the PDF instead of painting it.
+          className="h-full w-full bg-white"
           onClick={onClick}
           onLoad={() => setPainted(true)}
           onError={() => setPainted(true)}

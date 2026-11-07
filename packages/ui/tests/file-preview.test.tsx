@@ -78,6 +78,8 @@ describe("file preview", () => {
       arrayBuffer: async () => new Uint8Array([37, 80, 68, 70]).buffer,
     });
     const frame = await screen.findByTitle("plate.pdf");
+    expect(frame.className).toContain("h-full");
+    expect(frame.className).not.toContain("opacity-0");
     expect(screen.getByRole("status", { name: "Loading…" })).toBeTruthy();
     fireEvent.load(frame);
     expect(screen.queryByRole("status", { name: "Loading…" })).toBeNull();
