@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.2 — 2026-11-07
+
+- PDF preview keeps the iframe full size under the spinner. A 1px hidden frame made Chrome download a cross-origin PDF and left the spinner up.
+
 ## 0.6.1 — 2026-11-07
 
 - PDF preview no longer sandboxes the frame. Chrome blocks its own viewer in every sandboxed iframe, including `allow-scripts`.
