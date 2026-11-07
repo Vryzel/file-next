@@ -16,6 +16,22 @@ export function canPreviewFile(file: Pick<FileNode, "mimeType" | "name">): boole
   return previewKind(file.mimeType, file.name) !== "none";
 }
 
+/**
+ * Chrome's PDF viewer refuses every sandboxed frame, including allow-scripts.
+ * A same-origin URL is re-framed as application/pdf so a host nonce CSP cannot
+ * reach the viewer and a mislabeled HTML file is not executed.
+ * Cross-origin URLs stay a direct frame: navigation does not need CORS.
+ */
+export function pdfFrameMode(src: string, pageOrigin: string): "blob" | "direct" {
+  try {
+    const url = new URL(src, pageOrigin);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "blob";
+    return url.origin === new URL(pageOrigin).origin ? "blob" : "direct";
+  } catch {
+    return "blob";
+  }
+}
+
 function previewKind(mimeType: string, name: string) {
   const mime = mimeType.toLowerCase();
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
@@ -32,6 +48,92 @@ function previewKind(mimeType: string, name: string) {
   return "none";
 }
 
+function PreviewSpinner({ label }: { label: string }) {
+  return (
+    <div role="status" aria-label={label} className="absolute inset-0 z-10 flex items-center justify-center">
+      <span className="sr-only">{label}</span>
+      <span
+        aria-hidden="true"
+        className="size-8 rounded-full border-2 border-white/25 border-t-white motion-safe:animate-spin"
+      />
+    </div>
+  );
+}
+
+function PdfFrame({
+  src,
+  title,
+  onClick,
+}: {
+  src: string;
+  title: string;
+  onClick: (event: React.SyntheticEvent) => void;
+}) {
+  const labels = useExplorerLabels();
+  const [frameSrc, setFrameSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [painted, setPainted] = useState(false);
+
+  useEffect(() => {
+    setPainted(false);
+    if (pdfFrameMode(src, window.location.origin) === "direct") {
+      setFrameSrc(src);
+      setFailed(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setFrameSrc(null);
+    setFailed(false);
+    // ponytail: buffers the file. The iframe cannot stream it: the host CSP would block Chrome's viewer.
+    void fetch(src, { credentials: "same-origin", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(String(response.status));
+        const blob = new Blob([await response.arrayBuffer()], { type: "application/pdf" });
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setFrameSrc(objectUrl);
+      })
+      .catch((error: unknown) => {
+        if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
+        setFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src]);
+
+  if (failed) {
+    return <p className="text-sm text-white/70">{labels.previewUnavailable}</p>;
+  }
+
+  return (
+    <div className="relative h-full w-full max-w-5xl">
+      {!painted ? <PreviewSpinner label={labels.loading} /> : null}
+      {frameSrc ? (
+        <iframe
+          src={frameSrc}
+          title={title}
+          referrerPolicy="no-referrer"
+          className={
+            painted
+              ? "h-full w-full bg-white"
+              : "absolute h-px w-px opacity-0"
+          }
+          onClick={onClick}
+          onLoad={() => setPainted(true)}
+          onError={() => setPainted(true)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function FilePreviewDialog({
   file,
   src,
@@ -46,12 +148,14 @@ export function FilePreviewDialog({
   const labels = useExplorerLabels();
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [ready, setReady] = useState(false);
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setScale(1);
     setPan({ x: 0, y: 0 });
+    setReady(false);
     closeRef.current?.focus();
   }, [file?.id, src]);
 
@@ -102,13 +206,16 @@ export function FilePreviewDialog({
         </button>
       </div>
 
-      <div className="flex h-full items-center justify-center px-4 pt-12 pb-16">
+      <div className="relative flex h-full w-full items-center justify-center px-4 pt-12 pb-16">
+        {kind !== "pdf" && !ready ? <PreviewSpinner label={labels.loading} /> : null}
         {kind === "image" ? (
           <img
             src={src}
             alt={file.name}
             draggable={false}
-            className="max-h-full max-w-full cursor-zoom-in select-none object-contain"
+            className={`max-h-full max-w-full cursor-zoom-in select-none object-contain ${ready ? "" : "absolute h-px w-px opacity-0"}`}
+            onLoad={() => setReady(true)}
+            onError={() => setReady(true)}
             style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
             onClick={stop}
             onDoubleClick={(event) => {
@@ -137,14 +244,22 @@ export function FilePreviewDialog({
               drag.current = null;
             }}
           />
-        ) : kind === "pdf" || kind === "text" ? (
+        ) : kind === "pdf" ? (
+          <PdfFrame src={src} title={file.name} onClick={stop} />
+        ) : kind === "text" ? (
           <iframe
             src={src}
             title={file.name}
             sandbox=""
             referrerPolicy="no-referrer"
-            className="h-full w-full max-w-5xl bg-white"
+            className={
+              ready
+                ? "h-full w-full max-w-5xl bg-white"
+                : "absolute h-px w-px max-w-5xl opacity-0"
+            }
             onClick={stop}
+            onLoad={() => setReady(true)}
+            onError={() => setReady(true)}
           />
         ) : kind === "video" ? (
           <video
@@ -152,13 +267,23 @@ export function FilePreviewDialog({
             playsInline
             preload="metadata"
             src={src}
-            className="max-h-full max-w-full"
+            className={`max-h-full max-w-full ${ready ? "" : "absolute h-px w-px opacity-0"}`}
             onClick={stop}
+            onLoadedData={() => setReady(true)}
+            onError={() => setReady(true)}
           >
             {labels.previewUnavailable}
           </video>
         ) : kind === "audio" ? (
-          <audio controls preload="metadata" src={src} className="w-full max-w-md" onClick={stop} />
+          <audio
+            controls
+            preload="metadata"
+            src={src}
+            className={`w-full max-w-md ${ready ? "" : "absolute h-px w-px opacity-0"}`}
+            onClick={stop}
+            onLoadedMetadata={() => setReady(true)}
+            onError={() => setReady(true)}
+          />
         ) : (
           <p className="text-sm text-white/70">{labels.previewUnavailable}</p>
         )}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 — 2026-11-07
+
+- PDF preview no longer sandboxes the frame. Chrome blocks its own viewer in every sandboxed iframe, including `allow-scripts`.
+- A same-origin PDF is fetched and shown as an `application/pdf` blob, so a host nonce CSP cannot run a mislabeled HTML file. Text previews stay sandboxed.
+- The lightbox shows a spinner until the preview is ready.
+
 ## 0.6.0 — 2026-10-24
 
 - Multi-select toast includes Clear selection, so a selection can be dropped without clicking each row. Uses the existing `clearSelection` label.
