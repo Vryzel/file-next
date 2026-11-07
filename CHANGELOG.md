@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3 — 2026-11-08
+
+- PDF preview always fetches the file and shows it as a blob. A direct frame of a remote PDF is what Chrome downloads, or paints as a blank white viewer.
+
 ## 0.6.2 — 2026-11-07
 
 - PDF preview keeps the iframe full size under the spinner. A 1px hidden frame made Chrome download a cross-origin PDF and left the spinner up.
