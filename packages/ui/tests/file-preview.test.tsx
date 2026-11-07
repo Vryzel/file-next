@@ -80,6 +80,7 @@ describe("file preview", () => {
     const frame = await screen.findByTitle("plate.pdf");
     expect(frame.className).toContain("h-full");
     expect(frame.className).not.toContain("opacity-0");
+    expect(frame.className).not.toContain("bg-white");
     expect(screen.getByRole("status", { name: "Loading…" })).toBeTruthy();
     fireEvent.load(frame);
     expect(screen.queryByRole("status", { name: "Loading…" })).toBeNull();
@@ -89,6 +90,16 @@ describe("file preview", () => {
   });
 
   it("does not sandbox a PDF, and keeps text locked down", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: async () => new Uint8Array([37, 80, 68, 70]).buffer,
+      }),
+    );
+    URL.createObjectURL ??= () => "blob:missing";
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     const { rerender } = render(
       <FilePreviewDialog
         file={file("plate.pdf", "application/pdf")}
@@ -97,7 +108,10 @@ describe("file preview", () => {
         onDownload={vi.fn()}
       />,
     );
-    expect(await screen.findByTitle("plate.pdf")).not.toHaveAttribute("sandbox");
+    const frame = await screen.findByTitle("plate.pdf");
+    expect(frame).not.toHaveAttribute("sandbox");
+    expect(frame).toHaveAttribute("src", "blob:preview");
+    expect(frame).not.toHaveAttribute("src", "https://cdn.example/plate.pdf");
 
     rerender(
       <FilePreviewDialog
@@ -108,6 +122,8 @@ describe("file preview", () => {
       />,
     );
     expect(screen.getByTitle("notes.txt")).toHaveAttribute("sandbox", "");
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("reframes a same-origin PDF as application/pdf so the host CSP cannot block the viewer", async () => {
@@ -143,8 +159,8 @@ describe("file preview", () => {
     vi.restoreAllMocks();
   });
 
-  it("streams a cross-origin PDF and blobs a same-origin one", () => {
-    expect(pdfFrameMode("https://cdn.example/a.pdf", "http://localhost:3000")).toBe("direct");
+  it("blobs every PDF, including a cross-origin one", () => {
+    expect(pdfFrameMode("https://cdn.example/a.pdf", "http://localhost:3000")).toBe("blob");
     expect(pdfFrameMode("/api/files/1", "http://localhost:3000")).toBe("blob");
     expect(pdfFrameMode("http://localhost:3000/api/files/1", "http://localhost:3000")).toBe(
       "blob",

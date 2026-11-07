@@ -17,19 +17,11 @@ export function canPreviewFile(file: Pick<FileNode, "mimeType" | "name">): boole
 }
 
 /**
- * Chrome's PDF viewer refuses every sandboxed frame, including allow-scripts.
- * A same-origin URL is re-framed as application/pdf so a host nonce CSP cannot
- * reach the viewer and a mislabeled HTML file is not executed.
- * Cross-origin URLs stay a direct frame: navigation does not need CORS.
+ * Every PDF is fetched and re-framed as a blob. A direct frame of a remote PDF
+ * is what Chrome downloads, or paints as a blank white viewer.
  */
-export function pdfFrameMode(src: string, pageOrigin: string): "blob" | "direct" {
-  try {
-    const url = new URL(src, pageOrigin);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return "blob";
-    return url.origin === new URL(pageOrigin).origin ? "blob" : "direct";
-  } catch {
-    return "blob";
-  }
+export function pdfFrameMode(_src: string, _pageOrigin: string): "blob" {
+  return "blob";
 }
 
 function previewKind(mimeType: string, name: string) {
@@ -76,18 +68,12 @@ function PdfFrame({
 
   useEffect(() => {
     setPainted(false);
-    if (pdfFrameMode(src, window.location.origin) === "direct") {
-      setFrameSrc(src);
-      setFailed(false);
-      return;
-    }
-
     const controller = new AbortController();
     let cancelled = false;
     let objectUrl: string | null = null;
     setFrameSrc(null);
     setFailed(false);
-    // ponytail: buffers the file. The iframe cannot stream it: the host CSP would block Chrome's viewer.
+    // ponytail: buffers the file. A remote iframe src is what Chrome downloads or paints white.
     void fetch(src, { credentials: "same-origin", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(String(response.status));
@@ -120,8 +106,7 @@ function PdfFrame({
           src={frameSrc}
           title={title}
           referrerPolicy="no-referrer"
-          // A 1px hidden frame makes Chrome download the PDF instead of painting it.
-          className="h-full w-full bg-white"
+          className="h-full w-full"
           onClick={onClick}
           onLoad={() => setPainted(true)}
           onError={() => setPainted(true)}
