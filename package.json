@@ -36,7 +36,7 @@
     "better-sqlite3": "^11.3.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.460.0",
+    "lucide-react": "^0.577.0",
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
